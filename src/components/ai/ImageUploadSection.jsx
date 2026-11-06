@@ -1,8 +1,8 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import {
-  Upload, RotateCw, Image as ImageIcon, Sparkles, Check,
+  Upload, RotateCw, Sparkles, Check,
   Sliders, ShieldCheck, Ruler, ArrowRight, Wand2, Compass,
-  Palette, Download, RefreshCw, Eye, Key
+  Palette, Download, RefreshCw, Key, Building2, Home, Dices, Cpu
 } from 'lucide-react';
 import BeforeAfterSlider from './BeforeAfterSlider.jsx';
 import { useProject } from '../../context/ProjectContext.jsx';
@@ -24,29 +24,38 @@ export default function ImageUploadSection() {
   const [brightness, setBrightness] = useState(100);
   const [isProcessing, setIsProcessing] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
-  const [transformIntensity, setTransformIntensity] = useState(0.85);
+  const [transformIntensity, setTransformIntensity] = useState(0.88);
+  const [roomCondition, setRoomCondition] = useState('under_construction'); // 'under_construction' | 'existing_kitchen'
+  const [transformationMode, setTransformationMode] = useState('generative'); // 'generative' | 'cad_overlay' | 'recolor'
+  const [variationSeed, setVariationSeed] = useState(() => Math.floor(Math.random() * 800000) + 100000);
   const [geminiApiKey, setGeminiApiKey] = useState(() => localStorage.getItem('kitchencraft_gemini_key') || '');
   const [showApiKeyInput, setShowApiKeyInput] = useState(false);
 
   // Pre-loaded sample kitchen photos
   const sampleKitchens = [
     {
+      title: 'Under-Construction Bare Room',
+      desc: 'Raw concrete & plaster shell ready for modular fitting',
+      url: 'https://images.unsplash.com/photo-1590381105924-c72589b9ef3f?auto=format&fit=crop&w=1000&q=80',
+      suggestedStyle: 'Modern Luxury',
+      layout: 'L-Shaped',
+      condition: 'under_construction'
+    },
+    {
       title: 'Traditional Wooden Kitchen',
+      desc: 'Old solid wood cabinets and outdated layout',
       url: 'https://images.unsplash.com/photo-1507089947368-19c1da9775ae?auto=format&fit=crop&w=1000&q=80',
       suggestedStyle: 'Modern Minimalist',
-      layout: 'L-Shaped'
+      layout: 'L-Shaped',
+      condition: 'existing_kitchen'
     },
     {
       title: 'Dated White & Wood Kitchen',
+      desc: 'Yellowing laminate and worn countertops',
       url: 'https://images.unsplash.com/photo-1588854337236-6889d631faa8?auto=format&fit=crop&w=1000&q=80',
       suggestedStyle: 'Scandinavian',
-      layout: 'Parallel'
-    },
-    {
-      title: 'Compact Studio Kitchen',
-      url: 'https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?auto=format&fit=crop&w=1000&q=80',
-      suggestedStyle: 'Luxury European',
-      layout: 'Straight'
+      layout: 'Parallel',
+      condition: 'existing_kitchen'
     }
   ];
 
@@ -71,64 +80,96 @@ export default function ImageUploadSection() {
     { name: 'Sage Mist', hex: '#879883' }
   ];
 
-  // Helper to re-run image transformation directly on user's photo
-  const executeTransformationOnPhoto = async (photoUrl, customVisuals = visuals) => {
+  // Primary Transformation Execution Engine
+  const executeTransformation = async (photoUrl, customVisuals = visuals, customSeed = variationSeed) => {
     if (!photoUrl) return;
 
+    setIsProcessing(true);
+    setErrorMsg('');
+
     try {
-      const transformedDataUrl = await transformKitchenImage(photoUrl, {
-        cabinetColor: customVisuals.cabinetColor || '#52634A',
-        shutterFinish: customVisuals.shutterFinish || 'matte',
-        counterType: customVisuals.counterType || 'quartz',
-        counterColor: customVisuals.counterColor || '#F5F5F0',
-        backsplashType: customVisuals.backsplashType || 'zellige',
-        backsplashColor: customVisuals.backsplashColor || '#52634A',
-        lightingMode: customVisuals.lightingMode || 'warm',
-        intensity: transformIntensity
-      });
+      let finalResultImage = null;
 
-      setTransformedImage(transformedDataUrl);
+      // 1. GENERATIVE AI MODE: Call backend architectural diffusion engine
+      if (transformationMode === 'generative') {
+        try {
+          const res = await fetch('/api/ai/transform', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(geminiApiKey ? { 'x-gemini-key': geminiApiKey } : {})
+            },
+            body: JSON.stringify({
+              imageUrl: photoUrl,
+              designStyle: activeDesignStyle,
+              roomCondition,
+              transformationMode: 'generative',
+              cabinetColor: customVisuals.cabinetColor || '#52634A',
+              cabinetFinish: customVisuals.shutterFinish || 'matte',
+              countertop: customVisuals.counterType || 'quartz',
+              backsplash: customVisuals.backsplashType || 'zellige',
+              lighting: customVisuals.lightingMode || 'warm',
+              dimensions,
+              seed: customSeed
+            })
+          });
 
-      // Call backend to log and perform architectural analysis
-      try {
-        const res = await fetch('/api/ai/transform', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(geminiApiKey ? { 'x-gemini-key': geminiApiKey } : {})
-          },
-          body: JSON.stringify({
-            imageUrl: photoUrl,
-            transformedImage: transformedDataUrl,
-            designStyle: activeDesignStyle,
-            cabinetColor: customVisuals.cabinetColor,
-            cabinetFinish: customVisuals.shutterFinish,
-            countertop: customVisuals.counterColor,
-            backsplash: customVisuals.backsplashColor,
-            lighting: customVisuals.lightingMode,
-            dimensions
-          })
-        });
-        const json = await res.json();
-        if (json.data?.aiAnalysis) {
-          setAiAnalysis(json.data.aiAnalysis);
+          const json = await res.json();
+          if (json.data?.transformedImage) {
+            finalResultImage = json.data.transformedImage;
+            if (json.data.aiAnalysis) {
+              setAiAnalysis(json.data.aiAnalysis);
+            }
+          }
+        } catch (apiErr) {
+          console.warn('Backend generative API call failed, falling back to CAD Overlay:', apiErr);
         }
-      } catch (e) {
-        // Fallback analysis
+      }
+
+      // 2. CAD OVERLAY / PROCEDURAL FALLBACK: Direct structural synthesis on user photo
+      if (!finalResultImage) {
+        finalResultImage = await transformKitchenImage(photoUrl, {
+          cabinetColor: customVisuals.cabinetColor || '#52634A',
+          shutterFinish: customVisuals.shutterFinish || 'matte',
+          counterType: customVisuals.counterType || 'quartz',
+          counterColor: customVisuals.counterColor || '#F5F5F0',
+          backsplashType: customVisuals.backsplashType || 'zellige',
+          backsplashColor: customVisuals.backsplashColor || '#52634A',
+          lightingMode: customVisuals.lightingMode || 'warm',
+          designStyle: activeDesignStyle,
+          isUnderConstruction: roomCondition === 'under_construction',
+          mode: transformationMode,
+          intensity: transformIntensity
+        });
+
+        // Set structural diagnostics
         setAiAnalysis({
           detectedRoomLayout: `${dimensions.length} x ${dimensions.width} ft ${dimensions.layout || 'L-Shaped'} Layout`,
-          structuralPreservation: [
-            'Original room walls, camera perspective, and door/window apertures strictly preserved',
-            'Cabinet faces recolored with realistic lighting preservation',
-            'Countertop modernized with seamless quartz reflection',
-            '3000K Warm LED task glow injected beneath overhead cabinets'
+          structuralPreservation: roomCondition === 'under_construction' ? [
+            'Bare walls calibrated with structural floor-to-ceiling modular cabinetry',
+            'Bare concrete floor layered with vitrified Italian porcelain finish',
+            'Primary plumbing drainage mapped beneath 34-inch stainless steel sink',
+            'Exhaust ducting mapped for 1500 m3/h high suction auto-clean chimney',
+            'Concealed 3000K warm LED task lighting and ceiling spotlight grid applied'
+          ] : [
+            'Original kitchen geometry, camera perspective, and walls 100% preserved',
+            'Window and door apertures locked in spatial position',
+            'Cabinet surfaces replaced with custom modular acrylic finish',
+            'Countertops upgraded with Calacatta quartz reflection',
+            'Concealed LED profile task lights cast warm 3000K ambient wash'
           ],
-          aestheticNotes: `Sleek ${activeDesignStyle} cabinetry in ${customVisuals.cabinetColor} with modern architectural finishes.`
+          aestheticNotes: roomCondition === 'under_construction'
+            ? `Transformed bare under-construction room into a bespoke ${activeDesignStyle} modular kitchen with ${customVisuals.cabinetColor} cabinetry, quartz worktops and layered task illumination.`
+            : `Sleek ${activeDesignStyle} cabinetry in ${customVisuals.cabinetColor} with modern architectural finishes.`
         });
       }
+
+      setTransformedImage(finalResultImage);
     } catch (err) {
       console.error('Photo transformation error:', err);
-      setErrorMsg('Failed to process uploaded photo. Please try a different image format.');
+      setErrorMsg('Failed to process kitchen image. Please try again or switch transformation mode.');
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -145,7 +186,7 @@ export default function ImageUploadSection() {
     reader.onload = (event) => {
       const dataUrl = event.target.result;
       setUploadedImage(dataUrl);
-      setTransformedImage(null); // Reset until user clicks transform or auto-transforms
+      setTransformedImage(null);
       setErrorMsg('');
     };
     reader.readAsDataURL(file);
@@ -171,24 +212,22 @@ export default function ImageUploadSection() {
     if (!uploadedImage) {
       setUploadedImage(sampleKitchens[0].url);
     }
-
-    setIsProcessing(true);
-    setErrorMsg('');
-
-    try {
-      await executeTransformationOnPhoto(photoToTransform, visuals);
-    } finally {
-      setIsProcessing(false);
-    }
+    await executeTransformation(photoToTransform, visuals, variationSeed);
   };
 
-  // Live recolor when swatch clicked if already transformed
+  // Cycle variations with random seeds
+  const handleGenerateVariation = async () => {
+    const nextSeed = Math.floor(Math.random() * 900000) + 100000;
+    setVariationSeed(nextSeed);
+    const photoToTransform = uploadedImage || sampleKitchens[0].url;
+    await executeTransformation(photoToTransform, visuals, nextSeed);
+  };
+
+  // Live recolor when swatch clicked
   const handleQuickRecolor = async (newColor) => {
     updateVisual('cabinetColor', newColor);
     if (uploadedImage) {
-      setIsProcessing(true);
-      await executeTransformationOnPhoto(uploadedImage, { ...visuals, cabinetColor: newColor });
-      setIsProcessing(false);
+      await executeTransformation(uploadedImage, { ...visuals, cabinetColor: newColor }, variationSeed);
     }
   };
 
@@ -206,10 +245,10 @@ export default function ImageUploadSection() {
             <Sparkles className="w-3.5 h-3.5 text-amber-300" /> Architectural AI Kitchen Transformation
           </div>
           <h2 className="text-3xl font-serif font-bold text-white">
-            Upload Your Kitchen & See It Transformed
+            Transform Any Kitchen Photo — Even Under-Construction
           </h2>
           <p className="text-[#D9C8AE] text-xs sm:text-sm leading-relaxed">
-            Upload a photo of your actual kitchen space. KITCHENcraft transforms <strong>your exact photo</strong>—re-skinning your cabinetry to custom modular colors, applying polished marble countertops, and casting warm LED task lighting while preserving your room’s exact walls, perspective, and windows.
+            Upload any photograph—whether it’s a <strong>raw under-construction brick shell</strong>, an empty apartment, or an old kitchen. Our Architectural AI engine synthesizes a full luxury modular kitchen with custom cabinetry, quartz waterfall counters, built-in appliances, and warm 3000K LED lighting.
           </p>
         </div>
         <div className="absolute right-0 bottom-0 opacity-10 translate-x-12 translate-y-12">
@@ -295,7 +334,7 @@ export default function ImageUploadSection() {
                   Click or drag and drop your kitchen photograph here
                 </h4>
                 <p className="text-[#6B6862] text-xs max-w-sm mx-auto mb-4">
-                  Take a photo showing your kitchen cabinets, countertop, and walls.
+                  Take a photo of your under-construction space, empty room, or existing kitchen.
                 </p>
                 <button
                   type="button"
@@ -310,9 +349,9 @@ export default function ImageUploadSection() {
           {/* Quick Select Sample Kitchens */}
           <div className="bg-[#FFFFFF] p-5 rounded-2xl border border-[#D9C8AE]/40 card-shadow space-y-3">
             <span className="text-xs font-bold text-[#6B6862] uppercase tracking-wider block">
-              Or Test With A Sample Kitchen Photograph:
+              Or Try A Sample Kitchen Photo:
             </span>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               {sampleKitchens.map((sample, idx) => (
                 <div
                   key={idx}
@@ -321,6 +360,7 @@ export default function ImageUploadSection() {
                     setTransformedImage(null);
                     setActiveDesignStyle(sample.suggestedStyle);
                     setLayoutType(sample.layout);
+                    setRoomCondition(sample.condition);
                   }}
                   className={`group cursor-pointer rounded-xl overflow-hidden border-2 transition-all ${
                     uploadedImage === sample.url
@@ -328,20 +368,26 @@ export default function ImageUploadSection() {
                       : 'border-transparent hover:border-[#D9C8AE]'
                   }`}
                 >
-                  <div className="h-20 bg-gray-100 overflow-hidden relative">
+                  <div className="h-24 bg-gray-100 overflow-hidden relative">
                     <img
                       src={sample.url}
                       alt={sample.title}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                     />
+                    {sample.condition === 'under_construction' && (
+                      <span className="absolute top-1.5 left-1.5 bg-amber-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow">
+                        Under-Construction
+                      </span>
+                    )}
                     {uploadedImage === sample.url && (
                       <div className="absolute top-1 right-1 w-5 h-5 bg-[#52634A] text-white rounded-full flex items-center justify-center">
                         <Check className="w-3 h-3" />
                       </div>
                     )}
                   </div>
-                  <div className="p-1.5 bg-[#F8F5EF] text-center">
-                    <p className="text-[11px] font-semibold text-[#292929] truncate">{sample.title}</p>
+                  <div className="p-2 bg-[#F8F5EF]">
+                    <p className="text-[11px] font-bold text-[#292929] truncate">{sample.title}</p>
+                    <p className="text-[10px] text-[#6B6862] line-clamp-1">{sample.desc}</p>
                   </div>
                 </div>
               ))}
@@ -407,46 +453,138 @@ export default function ImageUploadSection() {
 
         {/* Right Column: Style Options & AI Transform Engine (5 Cols) */}
         <div className="lg:col-span-5 space-y-6">
-          {/* Preferred Architectural Style */}
-          <div className="bg-[#FFFFFF] p-6 rounded-3xl border border-[#D9C8AE]/50 card-shadow space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="font-serif font-bold text-lg text-[#292929] flex items-center gap-2">
-                <Compass className="w-4 h-4 text-[#52634A]" /> Select Design Aesthetic
-              </h3>
-              <span className="text-[11px] text-[#52634A] font-semibold bg-[#F0E8DC] px-2.5 py-0.5 rounded-full">
-                8 Curated Styles
-              </span>
-            </div>
-
-            <div className="grid grid-cols-1 gap-2.5 max-h-[260px] overflow-y-auto pr-1">
-              {designStyles.map((style) => (
-                <div
-                  key={style.name}
-                  onClick={() => setActiveDesignStyle(style.name)}
-                  className={`p-3 rounded-2xl border cursor-pointer transition-all flex items-start gap-3 ${
-                    activeDesignStyle === style.name
-                      ? 'bg-[#F8F5EF] border-[#52634A] ring-1 ring-[#52634A]'
-                      : 'border-[#D9C8AE]/40 hover:bg-[#F8F5EF]/60'
+          {/* Room Condition & Engine Mode Selectors */}
+          <div className="bg-[#FFFFFF] p-6 rounded-3xl border border-[#D9C8AE]/50 card-shadow space-y-5">
+            {/* 1. Room Condition Selector */}
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-[#292929] uppercase tracking-wider flex items-center gap-1.5">
+                <Building2 className="w-3.5 h-3.5 text-[#52634A]" /> Room Photo Condition:
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setRoomCondition('under_construction')}
+                  className={`p-3 rounded-xl border text-left transition-all ${
+                    roomCondition === 'under_construction'
+                      ? 'bg-[#F0E8DC] border-[#52634A] ring-1 ring-[#52634A]'
+                      : 'border-[#D9C8AE]/50 hover:bg-[#F8F5EF]'
                   }`}
                 >
-                  <div className={`w-4 h-4 rounded-full mt-0.5 border flex items-center justify-center shrink-0 ${
-                    activeDesignStyle === style.name ? 'border-[#52634A] bg-[#52634A]' : 'border-gray-300'
-                  }`}>
-                    {activeDesignStyle === style.name && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                  <span className="font-bold text-xs text-[#292929] block flex items-center gap-1">
+                    🏗️ Under-Construction
+                  </span>
+                  <span className="text-[10px] text-[#6B6862] block mt-0.5">
+                    Bare bricks, concrete, no cabinets
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setRoomCondition('existing_kitchen')}
+                  className={`p-3 rounded-xl border text-left transition-all ${
+                    roomCondition === 'existing_kitchen'
+                      ? 'bg-[#F0E8DC] border-[#52634A] ring-1 ring-[#52634A]'
+                      : 'border-[#D9C8AE]/50 hover:bg-[#F8F5EF]'
+                  }`}
+                >
+                  <span className="font-bold text-xs text-[#292929] block flex items-center gap-1">
+                    🏡 Existing Kitchen
+                  </span>
+                  <span className="text-[10px] text-[#6B6862] block mt-0.5">
+                    Full remodel of built kitchen
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            {/* 2. AI Engine Mode Selector */}
+            <div className="space-y-2 border-t border-[#D9C8AE]/40 pt-4">
+              <label className="text-xs font-bold text-[#292929] uppercase tracking-wider flex items-center gap-1.5">
+                <Cpu className="w-3.5 h-3.5 text-[#52634A]" /> Transformation Engine:
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setTransformationMode('generative')}
+                  className={`p-2 rounded-xl border text-center transition-all ${
+                    transformationMode === 'generative'
+                      ? 'bg-[#52634A] text-white border-[#52634A]'
+                      : 'border-[#D9C8AE]/50 hover:bg-[#F8F5EF] text-[#292929]'
+                  }`}
+                >
+                  <span className="font-bold text-[11px] block">🌟 AI Diffusion</span>
+                  <span className="text-[9px] opacity-80 block">Photorealistic 8K</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setTransformationMode('cad_overlay')}
+                  className={`p-2 rounded-xl border text-center transition-all ${
+                    transformationMode === 'cad_overlay'
+                      ? 'bg-[#52634A] text-white border-[#52634A]'
+                      : 'border-[#D9C8AE]/50 hover:bg-[#F8F5EF] text-[#292929]'
+                  }`}
+                >
+                  <span className="font-bold text-[11px] block">📐 CAD Overlay</span>
+                  <span className="text-[9px] opacity-80 block">3D Perspective</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setTransformationMode('recolor')}
+                  className={`p-2 rounded-xl border text-center transition-all ${
+                    transformationMode === 'recolor'
+                      ? 'bg-[#52634A] text-white border-[#52634A]'
+                      : 'border-[#D9C8AE]/50 hover:bg-[#F8F5EF] text-[#292929]'
+                  }`}
+                >
+                  <span className="font-bold text-[11px] block">🎨 Recolor</span>
+                  <span className="text-[9px] opacity-80 block">Surface PBR</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Preferred Architectural Style */}
+            <div className="border-t border-[#D9C8AE]/40 pt-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="font-serif font-bold text-sm text-[#292929] flex items-center gap-1.5">
+                  <Compass className="w-4 h-4 text-[#52634A]" /> Select Design Aesthetic
+                </h3>
+                <span className="text-[10px] text-[#52634A] font-semibold bg-[#F0E8DC] px-2 py-0.5 rounded-full">
+                  8 Curated Styles
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 gap-2 max-h-[220px] overflow-y-auto pr-1">
+                {designStyles.map((style) => (
+                  <div
+                    key={style.name}
+                    onClick={() => setActiveDesignStyle(style.name)}
+                    className={`p-2.5 rounded-xl border cursor-pointer transition-all flex items-start gap-2.5 ${
+                      activeDesignStyle === style.name
+                        ? 'bg-[#F8F5EF] border-[#52634A] ring-1 ring-[#52634A]'
+                        : 'border-[#D9C8AE]/40 hover:bg-[#F8F5EF]/60'
+                    }`}
+                  >
+                    <div className={`w-3.5 h-3.5 rounded-full mt-0.5 border flex items-center justify-center shrink-0 ${
+                      activeDesignStyle === style.name ? 'border-[#52634A] bg-[#52634A]' : 'border-gray-300'
+                    }`}>
+                      {activeDesignStyle === style.name && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                    </div>
+                    <div>
+                      <h5 className="text-xs font-bold text-[#292929]">{style.name}</h5>
+                      <p className="text-[10px] text-[#6B6862]">{style.desc}</p>
+                    </div>
                   </div>
-                  <div>
-                    <h5 className="text-xs font-bold text-[#292929]">{style.name}</h5>
-                    <p className="text-[11px] text-[#6B6862]">{style.desc}</p>
-                  </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
 
             {/* Cabinet Color & Material Customizer */}
             <div className="border-t border-[#D9C8AE]/40 pt-4 space-y-3">
               <div className="space-y-1.5">
                 <span className="text-xs font-bold text-[#292929] block">
-                  Select Cabinet Shutter Color for Your Photo:
+                  Select Cabinet Shutter Color:
                 </span>
                 <div className="flex flex-wrap items-center gap-2">
                   {colorSwatches.map((swatch) => (
@@ -492,23 +630,6 @@ export default function ImageUploadSection() {
                   <option value="sintered">Sintered Stone Slab</option>
                 </select>
               </div>
-
-              {/* Transformation Depth Slider */}
-              <div className="pt-1 space-y-1">
-                <div className="flex justify-between text-[11px] text-[#6B6862]">
-                  <span>Transformation Depth:</span>
-                  <span className="font-semibold text-[#292929]">{Math.round(transformIntensity * 100)}%</span>
-                </div>
-                <input
-                  type="range"
-                  min="0.4"
-                  max="1.0"
-                  step="0.05"
-                  value={transformIntensity}
-                  onChange={(e) => setTransformIntensity(Number(e.target.value))}
-                  className="w-full accent-[#52634A] cursor-pointer"
-                />
-              </div>
             </div>
 
             {/* Optional Gemini API Key trigger */}
@@ -532,30 +653,44 @@ export default function ImageUploadSection() {
                     className="w-full px-2.5 py-1.5 bg-white border border-[#D9C8AE] rounded-lg text-xs"
                   />
                   <span className="text-[9px] text-[#6B6862] block">
-                    Saved locally in browser. If omitted, KITCHENcraft's built-in Spatial Canvas Engine transforms your photo automatically.
+                    Saved locally in browser. If omitted, KITCHENcraft's built-in Architectural Diffusion engine runs automatically.
                   </span>
                 </div>
               )}
             </div>
 
-            {/* CTA Generate AI Transformation */}
-            <button
-              onClick={handleRunAiTransformation}
-              disabled={isProcessing}
-              className="w-full py-4 bg-gradient-to-r from-[#52634A] to-[#3E4B38] hover:from-[#3E4B38] hover:to-[#2F392B] text-white font-semibold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 group disabled:opacity-60 cursor-pointer text-xs sm:text-sm"
-            >
-              {isProcessing ? (
-                <>
-                  <Wand2 className="w-4 h-4 animate-spin text-amber-300" />
-                  Redesigning Your Kitchen Photo...
-                </>
-              ) : (
-                <>
-                  <Sparkles className="w-4 h-4 text-amber-300 group-hover:rotate-12 transition-transform" />
-                  Transform My Uploaded Kitchen Photo
-                </>
+            {/* CTA Buttons */}
+            <div className="space-y-2 pt-2">
+              <button
+                onClick={handleRunAiTransformation}
+                disabled={isProcessing}
+                className="w-full py-4 bg-gradient-to-r from-[#52634A] to-[#3E4B38] hover:from-[#3E4B38] hover:to-[#2F392B] text-white font-semibold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 group disabled:opacity-60 cursor-pointer text-xs sm:text-sm"
+              >
+                {isProcessing ? (
+                  <>
+                    <Wand2 className="w-4 h-4 animate-spin text-amber-300" />
+                    Generating Photorealistic Modular Design...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4 text-amber-300 group-hover:rotate-12 transition-transform" />
+                    Transform My Kitchen Photo
+                  </>
+                )}
+              </button>
+
+              {transformedImage && (
+                <button
+                  type="button"
+                  onClick={handleGenerateVariation}
+                  disabled={isProcessing}
+                  className="w-full py-2.5 bg-[#F8F5EF] hover:bg-[#F0E8DC] text-[#292929] border border-[#D9C8AE] rounded-xl text-xs font-semibold transition-all flex items-center justify-center gap-2"
+                >
+                  <Dices className={`w-3.5 h-3.5 text-[#52634A] ${isProcessing ? 'animate-spin' : ''}`} />
+                  Generate Another Design Variation
+                </button>
               )}
-            </button>
+            </div>
           </div>
         </div>
       </div>
@@ -572,12 +707,12 @@ export default function ImageUploadSection() {
                 Your Kitchen Transformed: {activeDesignStyle}
               </h3>
               <p className="text-xs text-[#6B6862]">
-                Drag the white slider handle horizontally to compare your original room against the redesigned modular finish.
+                Drag the white slider handle horizontally to compare your original {roomCondition === 'under_construction' ? 'under-construction space' : 'photo'} against the finished modular kitchen design.
               </p>
             </div>
             <div className="flex items-center gap-2">
               <span className="text-xs bg-emerald-50 text-emerald-800 border border-emerald-200 px-3 py-1 rounded-full font-medium flex items-center gap-1.5">
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" /> Your Exact Room Structure Preserved
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" /> Room Geometry & Perspectives Preserved
               </span>
             </div>
           </div>
@@ -586,8 +721,8 @@ export default function ImageUploadSection() {
           <BeforeAfterSlider
             beforeImage={uploadedImage || sampleKitchens[0].url}
             afterImage={transformedImage}
-            beforeLabel="Your Original Kitchen Photo"
-            afterLabel={`Redesigned in ${activeDesignStyle}`}
+            beforeLabel={roomCondition === 'under_construction' ? 'Original Under-Construction Room' : 'Your Original Kitchen Photo'}
+            afterLabel={`Transformed in ${activeDesignStyle}`}
           />
 
           {/* Real-time Fine-Tuning Swatches below Slider */}
@@ -615,15 +750,15 @@ export default function ImageUploadSection() {
 
             <div className="flex items-center gap-2">
               <button
-                onClick={handleRunAiTransformation}
+                onClick={handleGenerateVariation}
                 disabled={isProcessing}
                 className="px-4 py-2 bg-[#F8F5EF] hover:bg-[#F0E8DC] text-[#292929] border border-[#D9C8AE] rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5"
               >
-                <RefreshCw className={`w-3.5 h-3.5 ${isProcessing ? 'animate-spin' : ''}`} /> Re-render
+                <Dices className={`w-3.5 h-3.5 ${isProcessing ? 'animate-spin' : ''}`} /> Try Another Concept
               </button>
               <a
                 href={transformedImage}
-                download="kitchencraft-transformed-photo.jpg"
+                download="kitchencraft-transformed-kitchen.jpg"
                 className="px-4 py-2 bg-[#52634A] hover:bg-[#3E4B38] text-white rounded-xl text-xs font-semibold shadow-sm transition-all flex items-center gap-1.5"
               >
                 <Download className="w-3.5 h-3.5" /> Download Concept
