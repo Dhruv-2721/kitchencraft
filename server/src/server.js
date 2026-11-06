@@ -564,13 +564,6 @@ app.post('/api/ai/transform', async (req, res) => {
         aestheticNotes: chosenStyle.aestheticNotes
       }
     };
-          'Primary plumbing drainage point preserved beneath sink zone',
-          'Exhaust ducting aligned with high-power 1500 m3/h auto-clean chimney location',
-          'Work triangle (Hob - Sink - Refrigerator) optimized to 5.2 feet ergonomic radius'
-        ],
-        aestheticNotes: chosenStyle.aestheticNotes
-      }
-    };
 
     res.json({
       success: true,
