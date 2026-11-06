@@ -533,10 +533,13 @@ app.post('/api/ai/transform', async (req, res) => {
 
     const chosenStyle = styleConcepts[designStyle] || styleConcepts['Modern Minimalist'];
 
+    // If client supplied transformedImage or data URL generated from the user's uploaded photo, strictly preserve it!
+    const finalTransformedImage = req.body.transformedImage || (imageUrl && imageUrl.startsWith('data:') ? imageUrl : (imageUrl || chosenStyle.transformedUrl));
+
     // Simulated structural analysis result
     const transformationResult = {
       originalImage: imageUrl || 'https://images.unsplash.com/photo-1588854337236-6889d631faa8?auto=format&fit=crop&w=1200&q=80',
-      transformedImage: chosenStyle.transformedUrl,
+      transformedImage: finalTransformedImage,
       designStyle: designStyle || 'Modern Minimalist',
       appliedCustomizations: {
         cabinetColor: cabinetColor || '#52634A',
@@ -550,9 +553,17 @@ app.post('/api/ai/transform', async (req, res) => {
       aiAnalysis: {
         detectedRoomLayout: dimensions?.layout || 'L-Shaped Kitchen Layout',
         estimatedFloorArea: `${dimensions?.length || 12} x ${dimensions?.width || 10} ft (${((dimensions?.length || 12) * (dimensions?.width || 10))} sq.ft)`,
-        naturalLightCondition: 'Ample North-facing daylight window detected on right elevation',
+        naturalLightCondition: 'Optimal natural daylight aperture detected on room elevation',
         structuralPreservation: [
-          'Window aperture and plumb lines locked in position',
+          'Original kitchen geometry, camera perspective, and walls 100% preserved',
+          'Window and door apertures locked in spatial position',
+          'Primary plumbing drainage point preserved beneath sink zone',
+          'Exhaust ducting aligned with high-power 1500 m3/h auto-clean chimney location',
+          'Work triangle (Hob - Sink - Refrigerator) optimized to 5.2 feet ergonomic radius'
+        ],
+        aestheticNotes: chosenStyle.aestheticNotes
+      }
+    };
           'Primary plumbing drainage point preserved beneath sink zone',
           'Exhaust ducting aligned with high-power 1500 m3/h auto-clean chimney location',
           'Work triangle (Hob - Sink - Refrigerator) optimized to 5.2 feet ergonomic radius'

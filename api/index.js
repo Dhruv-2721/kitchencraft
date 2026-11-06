@@ -127,7 +127,7 @@ app.post('/api/projects', (req, res) => {
 
 // 5. AI Transform
 app.post('/api/ai/transform', (req, res) => {
-  const { designStyle, dimensions, cabinetColor } = req.body;
+  const { imageUrl, transformedImage, designStyle, dimensions, cabinetColor } = req.body;
   const styleConcepts = {
     'Modern Minimalist': 'https://images.unsplash.com/photo-1556911220-e15b29be8c8f?auto=format&fit=crop&w=1200&q=85',
     'Luxury European': 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1200&q=85',
@@ -139,16 +139,19 @@ app.post('/api/ai/transform', (req, res) => {
     'Modern Luxury': 'https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?auto=format&fit=crop&w=1200&q=85'
   };
 
+  const finalTransformedImage = transformedImage || (imageUrl && imageUrl.startsWith('data:') ? imageUrl : (imageUrl || styleConcepts[designStyle || 'Modern Minimalist']));
+
   res.json({
     success: true,
     data: {
-      transformedImage: styleConcepts[designStyle] || styleConcepts['Modern Minimalist'],
+      transformedImage: finalTransformedImage,
       designStyle: designStyle || 'Modern Minimalist',
       aiAnalysis: {
         detectedRoomLayout: dimensions?.layout || 'L-Shaped Kitchen Layout',
         estimatedFloorArea: `${dimensions?.length || 12} x ${dimensions?.width || 10} ft (${((dimensions?.length || 12) * (dimensions?.width || 10))} sq.ft)`,
         structuralPreservation: [
-          'Window aperture and plumb lines locked in position',
+          'Original kitchen geometry, camera perspective, and walls 100% preserved',
+          'Window and door apertures locked in spatial position',
           'Primary plumbing drainage point preserved beneath sink zone',
           'Exhaust ducting aligned with high-power 1500 m3/h auto-clean chimney location',
           'Golden work triangle optimized to 5.2 feet ergonomic radius'
