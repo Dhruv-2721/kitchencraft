@@ -124,15 +124,18 @@ export default function MaterialCard({
 
             <button
               onClick={handleApply}
+              title={isSelected ? 'Click to unselect / remove from kitchen' : 'Add to your kitchen specification'}
               className={`px-3 py-2 rounded-xl text-xs font-semibold shadow-sm transition-all flex items-center gap-1.5 ${
                 isSelected
-                  ? 'bg-[#52634A] text-white'
+                  ? 'bg-[#52634A] hover:bg-rose-700 text-white group/btn'
                   : 'bg-[#52634A] hover:bg-[#3E4B38] text-white'
               }`}
             >
               {isSelected ? (
                 <>
-                  <Check className="w-3.5 h-3.5" /> Selected
+                  <Check className="w-3.5 h-3.5 group-hover/btn:hidden" />
+                  <span className="group-hover/btn:hidden">Selected</span>
+                  <span className="hidden group-hover/btn:inline font-bold">✕ Unselect</span>
                 </>
               ) : (
                 'Add to Kitchen'

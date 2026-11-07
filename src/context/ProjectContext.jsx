@@ -83,35 +83,36 @@ export const ProjectProvider = ({ children }) => {
     // Floor area
     const floorSqft = length * width;
 
-    // Retrieve selected material pricing
-    const getPrice = (cat, defaultPrice) => {
+    // Retrieve selected material pricing (supports unselected/optional categories)
+    const getPrice = (cat, defaultPrice, isOptional = false) => {
       const selectedName = materials[cat];
+      if (!selectedName && isOptional) return 0;
       const match = initialMaterials.find(m => m.name === selectedName);
-      return match ? match.price_inr : defaultPrice;
+      return match ? match.price_inr : (selectedName ? defaultPrice : (isOptional ? 0 : defaultPrice));
     };
 
-    const carcassRate = getPrice('carcass', 110);
-    const shuttersRate = getPrice('shutters', 580);
-    const counterRate = getPrice('countertops', 780);
-    const backsplashRate = getPrice('backsplash', 180);
-    const hardwareRate = getPrice('hardware', 4200);
-    const storageRate = getPrice('storage', 32500);
-    const appliancesRate = getPrice('appliances', 28500);
-    const sinksRate = getPrice('sinks', 16500);
-    const lightingRate = getPrice('lighting', 450);
-    const flooringRate = getPrice('flooring', 135);
+    const carcassRate = getPrice('carcass', 110, false);
+    const shuttersRate = getPrice('shutters', 580, false);
+    const counterRate = getPrice('countertops', 780, false);
+    const backsplashRate = getPrice('backsplash', 180, true);
+    const hardwareRate = getPrice('hardware', 4200, false);
+    const storageRate = getPrice('storage', 32500, true);
+    const appliancesRate = getPrice('appliances', 28500, true);
+    const sinksRate = getPrice('sinks', 16500, true);
+    const lightingRate = getPrice('lighting', 450, true);
+    const flooringRate = getPrice('flooring', 135, true);
 
     // Itemized computations
     const carcass = Math.round(carcassSqft * carcassRate);
     const shutters = Math.round(shutterSqft * shuttersRate);
     const countertop = Math.round(counterSqft * counterRate);
-    const backsplash = Math.round(backsplashSqft * backsplashRate);
+    const backsplash = backsplashRate > 0 ? Math.round(backsplashSqft * backsplashRate) : 0;
     const hardware = Math.round((runningFeet / 2.5) * hardwareRate);
     const storage = storageRate;
-    const appliances = appliancesRate + 24900; // hob + chimney bundle
-    const sinks = sinksRate + 9800; // sink + premium faucet
-    const lighting = Math.round(runningFeet * lightingRate) + 8500; // strips + drivers + spots
-    const flooring = Math.round(floorSqft * flooringRate);
+    const appliances = appliancesRate > 0 ? appliancesRate + 24900 : 0;
+    const sinks = sinksRate > 0 ? sinksRate + 9800 : 0;
+    const lighting = lightingRate > 0 ? Math.round(runningFeet * lightingRate) + 8500 : 0;
+    const flooring = flooringRate > 0 ? Math.round(floorSqft * flooringRate) : 0;
 
     const materialSubtotal = carcass + shutters + countertop + backsplash + hardware + storage + appliances + sinks + lighting + flooring;
     const labour = Math.round(materialSubtotal * 0.12); // 12% precision carpentry & civil installation
@@ -164,7 +165,15 @@ export const ProjectProvider = ({ children }) => {
   }, []);
 
   const selectMaterial = (category, materialName) => {
-    setMaterials(prev => ({ ...prev, [category]: materialName }));
+    setMaterials(prev => {
+      // Toggle to unselect if already selected!
+      if (prev[category] === materialName) {
+        const next = { ...prev };
+        delete next[category];
+        return next;
+      }
+      return { ...prev, [category]: materialName };
+    });
 
     // Auto-sync visual colors if relevant
     const found = initialMaterials.find(m => m.name === materialName);

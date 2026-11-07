@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import {
   UploadCloud, Ruler, Layers, Palette, Wrench, Box,
   Calculator, CheckCircle, ArrowRight, ArrowLeft, Save,
-  Calendar, Sparkles, Check
+  Calendar, Sparkles, Check, Sliders, Eye, Lightbulb,
+  Maximize2, RotateCcw, Droplets, Zap
 } from 'lucide-react';
 import { useProject } from '../context/ProjectContext.jsx';
 import ImageUploadSection from '../components/ai/ImageUploadSection.jsx';
@@ -14,6 +15,7 @@ import { initialMaterials } from '../../server/src/seedData.js';
 
 export default function DesignerStudioPage({ onSelectTab }) {
   const [currentStep, setCurrentStep] = useState(1);
+  const [designMode, setDesignMode] = useState('manual'); // 'manual' (from scratch) or 'ai' (photo upload)
   const [quotationModalOpen, setQuotationModalOpen] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
@@ -27,11 +29,11 @@ export default function DesignerStudioPage({ onSelectTab }) {
   } = useProject();
 
   const steps = [
-    { num: 1, title: 'Upload & Concept', icon: UploadCloud },
+    { num: 1, title: 'Designer Mode', icon: Layers },
     { num: 2, title: 'Dimensions', icon: Ruler },
     { num: 3, title: 'Layout', icon: Layers },
-    { num: 4, title: 'Cabinets & Finishes', icon: Palette },
-    { num: 5, title: 'Hardware & Fittings', icon: Wrench },
+    { num: 4, title: 'Carcass & Shutters', icon: Palette },
+    { num: 5, title: 'Hardware, Sinks & Lights', icon: Wrench },
     { num: 6, title: '3D Studio', icon: Box },
     { num: 7, title: 'Cost Estimator', icon: Calculator },
     { num: 8, title: 'Save & Finalize', icon: CheckCircle }
@@ -44,12 +46,30 @@ export default function DesignerStudioPage({ onSelectTab }) {
   };
 
   const layoutsList = [
-    { id: 'Straight', name: 'Straight Kitchen', desc: 'Single linear wall run for studio apartments' },
-    { id: 'L-Shaped', name: 'L-Shaped Kitchen', desc: 'Dual adjoining walls with optimal ergonomic triangle' },
-    { id: 'U-Shaped', name: 'U-Shaped Kitchen', desc: 'Three walls with extensive worktops and storage' },
+    { id: 'Straight', name: 'Straight Kitchen', desc: 'Single linear wall run for compact flats' },
+    { id: 'L-Shaped', name: 'L-Shaped Kitchen', desc: 'Adjoining walls with optimal ergonomic work triangle' },
+    { id: 'U-Shaped', name: 'U-Shaped Kitchen', desc: 'Three walls with extensive worktop and storage' },
     { id: 'Parallel', name: 'Parallel / Galley', desc: 'Two opposing counter runs separating wet & dry zones' },
     { id: 'Island', name: 'Island Kitchen', desc: 'L-Shape base with freestanding breakfast island bar' },
     { id: 'G-Shaped', name: 'G-Shaped Kitchen', desc: 'U-Shape layout extended with a 4th dining peninsula' }
+  ];
+
+  const cabinetColors = [
+    { name: 'Dark Olive', hex: '#52634A' },
+    { name: 'Warm Beige', hex: '#D9C8AE' },
+    { name: 'Cashmere Cream', hex: '#F5F0E6' },
+    { name: 'Charcoal Slate', hex: '#2A2A2A' },
+    { name: 'Deep Navy', hex: '#23395B' },
+    { name: 'Sage Mist', hex: '#8A9A86' },
+    { name: 'Terracotta', hex: '#A45A3C' },
+    { name: 'Royal Emerald', hex: '#1C3F35' }
+  ];
+
+  const counterColors = [
+    { name: 'Calacatta White Quartz', hex: '#F5F5F0' },
+    { name: 'Jet Black Granite', hex: '#1E1E1E' },
+    { name: 'Pietra Grey Marble', hex: '#4A4A48' },
+    { name: 'Botticino Sintered Stone', hex: '#E8DFD1' }
   ];
 
   return (
@@ -58,7 +78,7 @@ export default function DesignerStudioPage({ onSelectTab }) {
       <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-6 rounded-3xl border border-[#D9C8AE]/50 card-shadow">
         <div>
           <span className="text-xs font-bold text-[#52634A] uppercase tracking-wider block">
-            Guided Kitchen Designer Studio
+            KITCHENcraft Design Studio
           </span>
           <input
             type="text"
@@ -119,10 +139,344 @@ export default function DesignerStudioPage({ onSelectTab }) {
 
       {/* Step Contents */}
       <div className="space-y-6">
-        {/* STEP 1: Upload or Start From Scratch */}
+        {/* STEP 1: Mode Switcher (Manual Designer vs AI Photo Transformation) */}
         {currentStep === 1 && (
           <div className="space-y-6">
-            <ImageUploadSection />
+            {/* Design Mode Selector Tabs */}
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white p-5 rounded-3xl border border-[#D9C8AE]/50 card-shadow">
+              <div>
+                <span className="text-xs font-bold text-[#52634A] uppercase tracking-wider block">
+                  Design Approach
+                </span>
+                <h3 className="font-serif font-bold text-2xl text-[#292929]">
+                  {designMode === 'manual' ? '🛠️ Manual Kitchen Designer (From Scratch)' : '📸 AI Kitchen Photo Transformation'}
+                </h3>
+                <p className="text-xs text-[#6B6862] mt-0.5">
+                  {designMode === 'manual'
+                    ? 'Build your kitchen manually without needing a photo. Customize layouts, dimensions, modules, and colors with live 3D.'
+                    : 'Upload an existing photo to let our AI analyze room boundaries and generate an architect-grade redesign.'}
+                </p>
+              </div>
+
+              <div className="flex items-center gap-1.5 bg-[#F8F5EF] p-1.5 rounded-2xl border border-[#D9C8AE]">
+                <button
+                  onClick={() => setDesignMode('manual')}
+                  className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                    designMode === 'manual'
+                      ? 'bg-[#52634A] text-white shadow-md'
+                      : 'text-[#6B6862] hover:text-[#292929]'
+                  }`}
+                >
+                  🛠️ Manual Designer
+                </button>
+                <button
+                  onClick={() => setDesignMode('ai')}
+                  className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                    designMode === 'ai'
+                      ? 'bg-[#52634A] text-white shadow-md'
+                      : 'text-[#6B6862] hover:text-[#292929]'
+                  }`}
+                >
+                  📸 AI Photo Upload
+                </button>
+              </div>
+            </div>
+
+            {/* If Manual Designer is chosen */}
+            {designMode === 'manual' ? (
+              <div className="space-y-6">
+                {/* Real-time Interactive 3D Canvas Preview */}
+                <div className="bg-white p-6 rounded-3xl border border-[#D9C8AE]/50 card-shadow space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                      <h4 className="font-serif font-bold text-xl text-[#292929]">
+                        Live 3D Kitchen Canvas
+                      </h4>
+                      <span className="text-xs bg-[#F0E8DC] text-[#52634A] font-bold px-2.5 py-1 rounded-full">
+                        {layoutType} Layout • {costBreakdown.runningFeet} Rft
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setCurrentStep(6)}
+                        className="px-3.5 py-1.5 bg-[#52634A]/10 text-[#52634A] hover:bg-[#52634A]/20 rounded-xl text-xs font-bold transition-all flex items-center gap-1"
+                      >
+                        <Maximize2 className="w-3.5 h-3.5" /> Fullscreen 3D Studio
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* 3D Scene */}
+                  <KitchenScene3D height="440px" />
+                </div>
+
+                {/* Manual Controls Grid */}
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                  {/* Left Column: Layouts & Dimensions (7 Cols) */}
+                  <div className="lg:col-span-7 space-y-6">
+                    {/* Layout Selector */}
+                    <div className="bg-white p-6 rounded-3xl border border-[#D9C8AE]/50 card-shadow space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="text-xs font-bold text-[#52634A] uppercase tracking-wider block">
+                            1. Select Floor Layout
+                          </span>
+                          <h4 className="font-serif font-bold text-xl text-[#292929]">
+                            Modular Kitchen Configuration
+                          </h4>
+                        </div>
+                        <span className="text-xs text-[#6B6862]">Click to apply immediately in 3D</span>
+                      </div>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                        {layoutsList.map((layout) => (
+                          <button
+                            key={layout.id}
+                            onClick={() => setLayoutType(layout.id)}
+                            className={`p-4 rounded-2xl border text-left transition-all ${
+                              layoutType === layout.id
+                                ? 'bg-[#F8F5EF] border-[#52634A] ring-2 ring-[#52634A]/20 shadow-md'
+                                : 'border-[#D9C8AE]/50 hover:bg-[#F8F5EF]/60 hover:border-[#52634A]'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="font-serif font-bold text-sm text-[#292929]">
+                                {layout.name}
+                              </span>
+                              {layoutType === layout.id && (
+                                <span className="w-4 h-4 rounded-full bg-[#52634A] text-white flex items-center justify-center text-[10px]">
+                                  ✓
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-[#6B6862] mt-1 line-clamp-2">
+                              {layout.desc}
+                            </p>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Dimensions Input */}
+                    <div className="bg-white p-6 rounded-3xl border border-[#D9C8AE]/50 card-shadow space-y-4">
+                      <div>
+                        <span className="text-xs font-bold text-[#52634A] uppercase tracking-wider block">
+                          2. Architectural Dimensions
+                        </span>
+                        <h4 className="font-serif font-bold text-xl text-[#292929]">
+                          Room & Counter Measurements
+                        </h4>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div className="p-4 bg-[#F8F5EF] rounded-2xl border border-[#D9C8AE]/50 space-y-2">
+                          <label className="text-xs font-bold text-[#292929] block">Length (Feet)</label>
+                          <input
+                            type="number"
+                            min="6"
+                            max="35"
+                            value={dimensions.length}
+                            onChange={(e) => setDimensions({ ...dimensions, length: Number(e.target.value) })}
+                            className="w-full px-3 py-2 bg-white border border-[#D9C8AE] rounded-xl text-base font-bold text-[#292929] focus:outline-none focus:border-[#52634A]"
+                          />
+                          <span className="text-[10px] text-[#6B6862]">Primary wall run</span>
+                        </div>
+
+                        <div className="p-4 bg-[#F8F5EF] rounded-2xl border border-[#D9C8AE]/50 space-y-2">
+                          <label className="text-xs font-bold text-[#292929] block">Width (Feet)</label>
+                          <input
+                            type="number"
+                            min="5"
+                            max="30"
+                            value={dimensions.width}
+                            onChange={(e) => setDimensions({ ...dimensions, width: Number(e.target.value) })}
+                            className="w-full px-3 py-2 bg-white border border-[#D9C8AE] rounded-xl text-base font-bold text-[#292929] focus:outline-none focus:border-[#52634A]"
+                          />
+                          <span className="text-[10px] text-[#6B6862]">Adjoining wall / clearance</span>
+                        </div>
+
+                        <div className="p-4 bg-[#F8F5EF] rounded-2xl border border-[#D9C8AE]/50 space-y-2">
+                          <label className="text-xs font-bold text-[#292929] block">Ceiling Height (Feet)</label>
+                          <input
+                            type="number"
+                            step="0.5"
+                            min="8"
+                            max="14"
+                            value={dimensions.ceilingHeight}
+                            onChange={(e) => setDimensions({ ...dimensions, ceilingHeight: Number(e.target.value) })}
+                            className="w-full px-3 py-2 bg-white border border-[#D9C8AE] rounded-xl text-base font-bold text-[#292929] focus:outline-none focus:border-[#52634A]"
+                          />
+                          <span className="text-[10px] text-[#6B6862]">Upper lofts & overheads</span>
+                        </div>
+                      </div>
+
+                      <div className="p-3.5 bg-emerald-50 text-emerald-900 rounded-2xl border border-emerald-200 text-xs flex items-center justify-between">
+                        <span><strong>Carpet Area:</strong> {dimensions.length * dimensions.width} sq.ft</span>
+                        <span><strong>Calculated Counter Run:</strong> {costBreakdown.runningFeet} Running Feet (Rft)</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Right Column: Cabinets, Finishes, Lighting & Modules (5 Cols) */}
+                  <div className="lg:col-span-5 space-y-6">
+                    {/* Modular Units Toggles */}
+                    <div className="bg-white p-6 rounded-3xl border border-[#D9C8AE]/50 card-shadow space-y-4">
+                      <div>
+                        <span className="text-xs font-bold text-[#52634A] uppercase tracking-wider block">
+                          3. Modular Modules
+                        </span>
+                        <h4 className="font-serif font-bold text-xl text-[#292929]">
+                          Cabinetry & Island Placement
+                        </h4>
+                      </div>
+
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between p-3.5 bg-[#F8F5EF] rounded-2xl border border-[#D9C8AE]/40">
+                          <div>
+                            <span className="text-xs font-bold text-[#292929] block">Overhead Wall Cabinets</span>
+                            <span className="text-[11px] text-[#6B6862]">Bi-fold lift-up upper tier storage</span>
+                          </div>
+                          <button
+                            onClick={() => updateVisual('showUpperCabinets', !visuals.showUpperCabinets)}
+                            className={`w-12 h-6 rounded-full transition-colors relative ${
+                              visuals.showUpperCabinets ? 'bg-[#52634A]' : 'bg-gray-300'
+                            }`}
+                          >
+                            <span className={`block w-4 h-4 rounded-full bg-white transition-transform ${
+                              visuals.showUpperCabinets ? 'translate-x-7' : 'translate-x-1'
+                            }`} />
+                          </button>
+                        </div>
+
+                        <div className="flex items-center justify-between p-3.5 bg-[#F8F5EF] rounded-2xl border border-[#D9C8AE]/40">
+                          <div>
+                            <span className="text-xs font-bold text-[#292929] block">Freestanding Island Bar</span>
+                            <span className="text-[11px] text-[#6B6862]">Central preparation unit with waterfall slab</span>
+                          </div>
+                          <button
+                            onClick={() => updateVisual('showIsland', !visuals.showIsland)}
+                            className={`w-12 h-6 rounded-full transition-colors relative ${
+                              visuals.showIsland ? 'bg-[#52634A]' : 'bg-gray-300'
+                            }`}
+                          >
+                            <span className={`block w-4 h-4 rounded-full bg-white transition-transform ${
+                              visuals.showIsland ? 'translate-x-7' : 'translate-x-1'
+                            }`} />
+                          </button>
+                        </div>
+
+                        <div className="flex items-center justify-between p-3.5 bg-[#F8F5EF] rounded-2xl border border-[#D9C8AE]/40">
+                          <div>
+                            <span className="text-xs font-bold text-[#292929] block">Under-Cabinet Profile Lights</span>
+                            <span className="text-[11px] text-[#6B6862]">Continuous dotless warm LED task strip</span>
+                          </div>
+                          <button
+                            onClick={() => updateVisual('lightsOn', !visuals.lightsOn)}
+                            className={`w-12 h-6 rounded-full transition-colors relative ${
+                              visuals.lightsOn ? 'bg-[#52634A]' : 'bg-gray-300'
+                            }`}
+                          >
+                            <span className={`block w-4 h-4 rounded-full bg-white transition-transform ${
+                              visuals.lightsOn ? 'translate-x-7' : 'translate-x-1'
+                            }`} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Color Swatches */}
+                    <div className="bg-white p-6 rounded-3xl border border-[#D9C8AE]/50 card-shadow space-y-4">
+                      <div>
+                        <span className="text-xs font-bold text-[#52634A] uppercase tracking-wider block">
+                          4. Shutter & Countertop Swatches
+                        </span>
+                        <h4 className="font-serif font-bold text-xl text-[#292929]">
+                          Colors & Finishes
+                        </h4>
+                      </div>
+
+                      {/* Cabinet Swatches */}
+                      <div className="space-y-2">
+                        <label className="text-xs font-bold text-[#292929] block">Cabinet Shutter Shade</label>
+                        <div className="grid grid-cols-4 gap-2">
+                          {cabinetColors.map((col) => (
+                            <button
+                              key={col.hex}
+                              onClick={() => updateVisual('cabinetColor', col.hex)}
+                              className={`p-2 rounded-xl border flex flex-col items-center gap-1.5 transition-all ${
+                                visuals.cabinetColor === col.hex
+                                  ? 'border-[#52634A] bg-[#F8F5EF] ring-2 ring-[#52634A]/30'
+                                  : 'border-[#D9C8AE]/40 hover:bg-[#F8F5EF]'
+                              }`}
+                            >
+                              <span
+                                className="w-6 h-6 rounded-full border border-black/10 shadow-sm"
+                                style={{ backgroundColor: col.hex }}
+                              />
+                              <span className="text-[10px] font-semibold text-[#292929] text-center leading-tight">
+                                {col.name}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Countertop Swatches */}
+                      <div className="space-y-2 pt-2">
+                        <label className="text-xs font-bold text-[#292929] block">Countertop Material Slab</label>
+                        <div className="grid grid-cols-2 gap-2">
+                          {counterColors.map((col) => (
+                            <button
+                              key={col.hex}
+                              onClick={() => updateVisual('counterColor', col.hex)}
+                              className={`p-2.5 rounded-xl border flex items-center gap-2 transition-all ${
+                                visuals.counterColor === col.hex
+                                  ? 'border-[#52634A] bg-[#F8F5EF] ring-2 ring-[#52634A]/30'
+                                  : 'border-[#D9C8AE]/40 hover:bg-[#F8F5EF]'
+                              }`}
+                            >
+                              <span
+                                className="w-5 h-5 rounded-full border border-black/10 shrink-0 shadow-sm"
+                                style={{ backgroundColor: col.hex }}
+                              />
+                              <span className="text-[11px] font-semibold text-[#292929] text-left leading-tight">
+                                {col.name}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Quick Next Navigation for Manual Designer */}
+                <div className="flex flex-wrap items-center justify-between gap-4 p-5 bg-[#F8F5EF] rounded-3xl border border-[#D9C8AE]/80">
+                  <div className="text-xs text-[#6B6862]">
+                    Ready to pick specific branded materials or explore sanitary fittings and smart lights?
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => setCurrentStep(4)}
+                      className="px-5 py-2.5 bg-white border border-[#D9C8AE] hover:bg-[#F0E8DC] text-[#292929] rounded-xl text-xs font-bold transition-all"
+                    >
+                      Step 4: Pick Boards & Veneers →
+                    </button>
+                    <button
+                      onClick={() => setCurrentStep(5)}
+                      className="px-5 py-2.5 bg-[#52634A] hover:bg-[#3E4B38] text-white rounded-xl text-xs font-bold shadow-md transition-all flex items-center gap-1.5"
+                    >
+                      Step 5: Pick Sinks & Lights →
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              /* If AI Transformation is chosen */
+              <ImageUploadSection />
+            )}
           </div>
         )}
 
@@ -228,7 +582,7 @@ export default function DesignerStudioPage({ onSelectTab }) {
             <div>
               <span className="text-xs font-bold text-[#52634A] uppercase tracking-wider block">Step 4 of 8</span>
               <h3 className="font-serif font-bold text-3xl text-[#292929]">Cabinet Carcass, Shutters & Surfaces</h3>
-              <p className="text-xs text-[#6B6862]">Pick your internal carcass ply, exterior shutters, countertop slabs, and backsplash.</p>
+              <p className="text-xs text-[#6B6862]">Pick your internal carcass ply, exterior shutters, countertop slabs, and backsplash. Click any card to select or unselect.</p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-2">
@@ -255,7 +609,7 @@ export default function DesignerStudioPage({ onSelectTab }) {
                   B. Cabinet Shutters & External Finish
                 </span>
                 <div className="space-y-3">
-                  {initialMaterials.filter(m => m.category_id === 'shutters').slice(0, 3).map((mat) => (
+                  {initialMaterials.filter(m => m.category_id === 'shutters').slice(0, 4).map((mat) => (
                     <MaterialCard
                       key={mat.name}
                       material={mat}
@@ -269,19 +623,32 @@ export default function DesignerStudioPage({ onSelectTab }) {
           </div>
         )}
 
-        {/* STEP 5: Hardware & Fittings */}
+        {/* STEP 5: Hardware, Appliances, Sinks & Lighting */}
         {currentStep === 5 && (
           <div className="bg-white p-8 rounded-3xl border border-[#D9C8AE]/50 card-shadow space-y-6">
-            <div>
-              <span className="text-xs font-bold text-[#52634A] uppercase tracking-wider block">Step 5 of 8</span>
-              <h3 className="font-serif font-bold text-3xl text-[#292929]">Hardware, Appliances & Sinks</h3>
-              <p className="text-xs text-[#6B6862]">Select German tandem drawer boxes, built-in chimneys, and composite sinks.</p>
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <span className="text-xs font-bold text-[#52634A] uppercase tracking-wider block">Step 5 of 8</span>
+                <h3 className="font-serif font-bold text-3xl text-[#292929]">Hardware, Sinks, Appliances & Lighting</h3>
+                <p className="text-xs text-[#6B6862]">
+                  Select German tandem drawer boxes, designer sanitary fittings, built-in chimneys, and profile/focus lighting. Click any selected card to unselect it.
+                </p>
+              </div>
+              <div className="text-xs bg-[#F0E8DC] text-[#52634A] px-3 py-1.5 rounded-full font-bold">
+                Dynamic Unselect Enabled (Hover to Remove)
+              </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-2">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 pt-2">
+              {/* Column 1: Hardware & Channels */}
               <div className="space-y-3">
-                <span className="text-xs font-bold text-[#292929] block">Hardware Runners</span>
-                {initialMaterials.filter(m => m.category_id === 'hardware').slice(0, 2).map((m) => (
+                <div className="flex items-center gap-2 pb-1 border-b border-[#D9C8AE]">
+                  <Wrench className="w-4 h-4 text-[#52634A]" />
+                  <span className="text-xs font-bold text-[#292929] uppercase tracking-wider">
+                    Hardware & Tandem Boxes
+                  </span>
+                </div>
+                {initialMaterials.filter(m => m.category_id === 'hardware').slice(0, 4).map((m) => (
                   <MaterialCard
                     key={m.name}
                     material={m}
@@ -291,9 +658,15 @@ export default function DesignerStudioPage({ onSelectTab }) {
                 ))}
               </div>
 
+              {/* Column 2: Kitchen Appliances */}
               <div className="space-y-3">
-                <span className="text-xs font-bold text-[#292929] block">Built-in Chimneys</span>
-                {initialMaterials.filter(m => m.category_id === 'appliances').slice(0, 2).map((m) => (
+                <div className="flex items-center gap-2 pb-1 border-b border-[#D9C8AE]">
+                  <Zap className="w-4 h-4 text-[#B69A65]" />
+                  <span className="text-xs font-bold text-[#292929] uppercase tracking-wider">
+                    Built-in Appliances
+                  </span>
+                </div>
+                {initialMaterials.filter(m => m.category_id === 'appliances').slice(0, 4).map((m) => (
                   <MaterialCard
                     key={m.name}
                     material={m}
@@ -303,14 +676,38 @@ export default function DesignerStudioPage({ onSelectTab }) {
                 ))}
               </div>
 
+              {/* Column 3: Sinks & Sanitary Fittings */}
               <div className="space-y-3">
-                <span className="text-xs font-bold text-[#292929] block">Sinks & Faucets</span>
-                {initialMaterials.filter(m => m.category_id === 'sinks').slice(0, 2).map((m) => (
+                <div className="flex items-center gap-2 pb-1 border-b border-[#D9C8AE]">
+                  <Droplets className="w-4 h-4 text-sky-600" />
+                  <span className="text-xs font-bold text-[#292929] uppercase tracking-wider">
+                    Sinks & Sanitary Fittings
+                  </span>
+                </div>
+                {initialMaterials.filter(m => m.category_id === 'sinks').slice(0, 5).map((m) => (
                   <MaterialCard
                     key={m.name}
                     material={m}
                     isSelected={materials.sinks === m.name}
                     onSelect={() => selectMaterial('sinks', m.name)}
+                  />
+                ))}
+              </div>
+
+              {/* Column 4: Lighting & Electrical Accessories */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 pb-1 border-b border-[#D9C8AE]">
+                  <Lightbulb className="w-4 h-4 text-amber-500" />
+                  <span className="text-xs font-bold text-[#292929] uppercase tracking-wider">
+                    Lighting & Electrical
+                  </span>
+                </div>
+                {initialMaterials.filter(m => m.category_id === 'lighting').slice(0, 5).map((m) => (
+                  <MaterialCard
+                    key={m.name}
+                    material={m}
+                    isSelected={materials.lighting === m.name}
+                    onSelect={() => selectMaterial('lighting', m.name)}
                   />
                 ))}
               </div>

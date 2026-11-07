@@ -14,7 +14,7 @@ export default function Navbar({ activeTab, onSelectTab, onOpenAuth }) {
 
   const navLinks = [
     { id: 'home', label: 'Home' },
-    { id: 'designer', label: 'Guided Designer', highlight: true },
+    { id: 'designer', label: 'Manual Designer', highlight: true },
     { id: '3d-studio', label: '3D Studio' },
     { id: 'layouts', label: 'Kitchen Layouts' },
     { id: 'catalogue', label: 'Material Catalogue' },

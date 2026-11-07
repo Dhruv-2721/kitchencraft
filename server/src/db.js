@@ -170,10 +170,10 @@ export async function initDatabase() {
       console.log('Categories seeded.');
     }
 
-    // Check and seed materials
-    const matCount = await dbGet('SELECT COUNT(*) as count FROM materials');
-    if (matCount.count === 0) {
-      for (const mat of initialMaterials) {
+    // Check and seed materials (and sync any newly added materials)
+    for (const mat of initialMaterials) {
+      const existing = await dbGet('SELECT id FROM materials WHERE name = ?', [mat.name]);
+      if (!existing) {
         await dbRun(`
           INSERT INTO materials (
             name, brand, category_id, finish, material_type, thickness,
@@ -186,8 +186,8 @@ export async function initDatabase() {
           mat.price_inr, mat.unit, mat.image_url, mat.description, mat.texture_color
         ]);
       }
-      console.log(`Seeded ${initialMaterials.length} rich materials.`);
     }
+    console.log(`Verified & synced materials in database (${initialMaterials.length} total).`);
 
     // Check and seed sample projects
     const projCount = await dbGet('SELECT COUNT(*) as count FROM kitchen_projects');

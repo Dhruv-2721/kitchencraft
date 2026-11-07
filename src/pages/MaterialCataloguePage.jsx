@@ -18,9 +18,16 @@ export default function MaterialCataloguePage() {
   const [compareModalOpen, setCompareModalOpen] = useState(false);
 
   // Filter & Sort Logic
+  const selectedCount = Object.keys(materials).length;
+
   const filteredMaterials = useMemo(() => {
     return initialMaterials.filter((m) => {
-      if (activeCategory !== 'all' && m.category_id !== activeCategory) return false;
+      if (activeCategory === 'selected') {
+        const isSelected = Object.values(materials).includes(m.name);
+        if (!isSelected) return false;
+      } else if (activeCategory !== 'all' && m.category_id !== activeCategory) {
+        return false;
+      }
       if (selectedQuality !== 'all' && m.quality_grade !== selectedQuality) return false;
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
@@ -36,7 +43,7 @@ export default function MaterialCataloguePage() {
       if (sortOrder === 'name_asc') return a.name.localeCompare(b.name);
       return 0;
     });
-  }, [activeCategory, searchQuery, selectedQuality, sortOrder]);
+  }, [activeCategory, searchQuery, selectedQuality, sortOrder, materials]);
 
   const handleToggleCompare = (material) => {
     setComparedProducts((prev) => {
@@ -91,6 +98,16 @@ export default function MaterialCataloguePage() {
           }`}
         >
           All Categories ({initialMaterials.length})
+        </button>
+        <button
+          onClick={() => setActiveCategory('selected')}
+          className={`px-4 py-2.5 rounded-2xl text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 ${
+            activeCategory === 'selected'
+              ? 'bg-[#B69A65] text-white shadow-md'
+              : 'bg-white text-[#52634A] hover:bg-[#F8F5EF] border border-[#52634A]/40'
+          }`}
+        >
+          <Check className="w-3.5 h-3.5 text-emerald-600" /> Selected in Project ({selectedCount})
         </button>
         {initialCategories.map((cat) => {
           const count = initialMaterials.filter((m) => m.category_id === cat.id).length;
