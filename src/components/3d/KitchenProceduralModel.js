@@ -42,8 +42,8 @@ function createMarbleTexture(baseColor = '#F5F5F0', veinColor = '#8A857D') {
 
   // Subtle organic veining
   ctx.strokeStyle = veinColor;
-  ctx.lineWidth = 1.8;
-  ctx.globalAlpha = 0.45;
+  ctx.lineWidth = 2.2;
+  ctx.globalAlpha = 0.40;
 
   ctx.beginPath();
   ctx.moveTo(0, 100);
@@ -55,8 +55,8 @@ function createMarbleTexture(baseColor = '#F5F5F0', veinColor = '#8A857D') {
   ctx.bezierCurveTo(220, 180, 280, 380, 480, 512);
   ctx.stroke();
 
-  ctx.lineWidth = 0.8;
-  ctx.globalAlpha = 0.25;
+  ctx.lineWidth = 1.0;
+  ctx.globalAlpha = 0.22;
   ctx.beginPath();
   ctx.moveTo(200, 120);
   ctx.lineTo(280, 190);
@@ -92,8 +92,28 @@ function createWoodTexture(woodHex = '#5A3825') {
   return texture;
 }
 
+// Realistic ambient contact shadow map
+function createContactShadowTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d');
+
+  const grad = ctx.createRadialGradient(128, 128, 20, 128, 128, 128);
+  grad.addColorStop(0, 'rgba(0, 0, 0, 0.75)');
+  grad.addColorStop(0.4, 'rgba(0, 0, 0, 0.35)');
+  grad.addColorStop(0.8, 'rgba(0, 0, 0, 0.08)');
+  grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 256, 256);
+  return new THREE.CanvasTexture(canvas);
+}
+
 export function buildKitchenModel(layoutType, dimensions, visuals) {
   const kitchenGroup = new THREE.Group();
+  const animatables = [];
+  kitchenGroup.userData.animatables = animatables;
 
   const {
     cabinetColor = '#52634A',
@@ -102,15 +122,15 @@ export function buildKitchenModel(layoutType, dimensions, visuals) {
     backsplashColor = '#52634A',
     floorColor = '#DDD7CC',
     wallColor = '#F8F5EF',
-    handleType = 'gola',
+    handleType = 'brass',
     lightsOn = true,
     showUpperCabinets = true,
     showIsland = true
   } = visuals;
 
   // Material setup
-  const roughness = shutterFinish === 'gloss' ? 0.08 : shutterFinish === 'veneer' ? 0.7 : 0.35;
-  const metalness = shutterFinish === 'glass' ? 0.2 : 0.05;
+  const roughness = shutterFinish === 'gloss' ? 0.08 : shutterFinish === 'veneer' ? 0.65 : 0.28;
+  const metalness = shutterFinish === 'glass' ? 0.2 : 0.04;
 
   const cabinetMat = new THREE.MeshStandardMaterial({
     color: new THREE.Color(cabinetColor),
@@ -119,23 +139,35 @@ export function buildKitchenModel(layoutType, dimensions, visuals) {
     map: shutterFinish === 'veneer' ? createWoodTexture(cabinetColor) : null
   });
 
+  const drawerInteriorMat = new THREE.MeshStandardMaterial({
+    color: 0xE8E4DD,
+    roughness: 0.5,
+    metalness: 0.1
+  });
+
+  const cutlerySteelMat = new THREE.MeshStandardMaterial({
+    color: 0xDDDDDD,
+    metalness: 0.95,
+    roughness: 0.15
+  });
+
   const counterMat = new THREE.MeshStandardMaterial({
     color: new THREE.Color(counterColor),
-    roughness: 0.15,
+    roughness: 0.14,
     metalness: 0.08,
     map: createMarbleTexture(counterColor, '#9B968D')
   });
 
   const backsplashMat = new THREE.MeshStandardMaterial({
     color: new THREE.Color(backsplashColor),
-    roughness: 0.2,
+    roughness: 0.18,
     metalness: 0.1,
     map: createTileTexture(backsplashColor)
   });
 
   const floorMat = new THREE.MeshStandardMaterial({
     color: new THREE.Color(floorColor),
-    roughness: 0.4,
+    roughness: 0.35,
     metalness: 0.05
   });
 
@@ -146,35 +178,38 @@ export function buildKitchenModel(layoutType, dimensions, visuals) {
   });
 
   const kickplateMat = new THREE.MeshStandardMaterial({
-    color: 0x222222,
-    roughness: 0.5
+    color: 0x1A1A1A,
+    roughness: 0.6
   });
 
   const applianceSteelMat = new THREE.MeshStandardMaterial({
-    color: 0x333333,
-    metalness: 0.85,
+    color: 0x2A2A2A,
+    metalness: 0.88,
     roughness: 0.2
   });
 
   const chromeMat = new THREE.MeshStandardMaterial({
-    color: 0xCCCCCC,
-    metalness: 0.95,
-    roughness: 0.1
+    color: 0xEEEEEE,
+    metalness: 0.98,
+    roughness: 0.08
   });
 
   const brassMat = new THREE.MeshStandardMaterial({
     color: new THREE.Color('#B69A65'),
-    metalness: 0.8,
-    roughness: 0.25
+    metalness: 0.85,
+    roughness: 0.22
   });
 
   const glassMat = new THREE.MeshPhysicalMaterial({
     color: 0x111111,
-    transmission: 0.6,
+    transmission: 0.65,
     opacity: 0.85,
     transparent: true,
-    roughness: 0.1
+    roughness: 0.08,
+    ior: 1.5
   });
+
+  const contactShadowTex = createContactShadowTexture();
 
   // Base dimensions in 3D coordinate units
   const roomW = (dimensions?.length || 12) * 0.45;
@@ -201,9 +236,27 @@ export function buildKitchenModel(layoutType, dimensions, visuals) {
   leftWall.receiveShadow = true;
   kitchenGroup.add(leftWall);
 
-  // Helper to create a modular lower cabinet run
+  // Contact Shadow Helper
+  function addContactShadow(parent, w, d, x = 0, z = 0) {
+    const shadowGeo = new THREE.PlaneGeometry(w * 1.08, d * 1.12);
+    const shadowMat = new THREE.MeshBasicMaterial({
+      map: contactShadowTex,
+      transparent: true,
+      opacity: 0.72,
+      depthWrite: false
+    });
+    const shadowMesh = new THREE.Mesh(shadowGeo, shadowMat);
+    shadowMesh.rotation.x = -Math.PI / 2;
+    shadowMesh.position.set(x, 0.003, z);
+    parent.add(shadowMesh);
+  }
+
+  // Helper to create an interactive modular lower cabinet run with real animatable drawers
   function createLowerRun(width, depth, x, z, rotY = 0) {
     const group = new THREE.Group();
+
+    // Contact shadow beneath lower cabinet
+    addContactShadow(group, width, depth, 0, 0);
 
     // Kickplate
     const kickGeo = new THREE.BoxGeometry(width, 0.15, depth - 0.08);
@@ -212,41 +265,113 @@ export function buildKitchenModel(layoutType, dimensions, visuals) {
     kick.castShadow = true;
     group.add(kick);
 
-    // Carcass & Shutters
     const cabinetH = 0.82;
-    const cabGeo = new THREE.BoxGeometry(width, cabinetH, depth);
-    const cab = new THREE.Mesh(cabGeo, cabinetMat);
-    cab.position.set(0, 0.15 + cabinetH / 2, 0);
-    cab.castShadow = true;
-    cab.receiveShadow = true;
-    group.add(cab);
+    // Internal carcass back and side frames
+    const carcassGeo = new THREE.BoxGeometry(width, cabinetH, depth * 0.95);
+    const carcass = new THREE.Mesh(carcassGeo, new THREE.MeshStandardMaterial({ color: 0x2A2A2A, roughness: 0.7 }));
+    carcass.position.set(0, 0.15 + cabinetH / 2, -depth * 0.02);
+    carcass.castShadow = true;
+    carcass.receiveShadow = true;
+    group.add(carcass);
 
-    // Individual Shutter dividing lines
-    const numDoors = Math.max(2, Math.round(width / 0.6));
-    const doorW = width / numDoors;
-    for (let i = 0; i <= numDoors; i++) {
-      const lineGeo = new THREE.BoxGeometry(0.008, cabinetH, 0.01);
-      const line = new THREE.Mesh(lineGeo, kickplateMat);
-      line.position.set(-width / 2 + i * doorW, 0.15 + cabinetH / 2, depth / 2 + 0.005);
-      group.add(line);
+    // Modular divisions with interactive animatable drawers!
+    const numModules = Math.max(2, Math.round(width / 0.65));
+    const modW = width / numModules;
 
-      // Handle or Gola profile
-      if (i < numDoors) {
-        if (handleType === 'brass') {
-          const handleGeo = new THREE.BoxGeometry(0.12, 0.015, 0.025);
-          const handle = new THREE.Mesh(handleGeo, brassMat);
-          handle.position.set(-width / 2 + (i + 0.5) * doorW, 0.85, depth / 2 + 0.02);
-          group.add(handle);
-        } else if (handleType === 'black' || handleType === 'profile') {
-          const handleGeo = new THREE.BoxGeometry(0.14, 0.015, 0.02);
-          const handle = new THREE.Mesh(handleGeo, applianceSteelMat);
-          handle.position.set(-width / 2 + (i + 0.5) * doorW, 0.85, depth / 2 + 0.018);
-          group.add(handle);
-        }
-      }
+    for (let m = 0; m < numModules; m++) {
+      const mx = -width / 2 + (m + 0.5) * modW;
+      const drawerW = modW - 0.012;
+
+      // 1. TOP CUTLERY DRAWER (Animatable forward glide)
+      const topDrawerH = cabinetH * 0.32;
+      const topDrawerY = 0.15 + cabinetH - topDrawerH / 2 - 0.01;
+
+      const topDrawerGroup = new THREE.Group();
+      topDrawerGroup.position.set(mx, topDrawerY, 0);
+
+      // Drawer front face
+      const frontMesh = new THREE.Mesh(new THREE.BoxGeometry(drawerW, topDrawerH - 0.01, 0.02), cabinetMat);
+      frontMesh.position.set(0, 0, depth / 2 + 0.01);
+      frontMesh.castShadow = true;
+      topDrawerGroup.add(frontMesh);
+
+      // Drawer handle
+      const handleMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(drawerW * 0.6, 0.015, 0.02),
+        handleType === 'brass' ? brassMat : applianceSteelMat
+      );
+      handleMesh.position.set(0, topDrawerH * 0.25, depth / 2 + 0.025);
+      topDrawerGroup.add(handleMesh);
+
+      // Interior box (sides, bottom, back)
+      const boxBottom = new THREE.Mesh(new THREE.BoxGeometry(drawerW * 0.92, 0.015, depth * 0.75), drawerInteriorMat);
+      boxBottom.position.set(0, -topDrawerH / 2 + 0.02, 0.05);
+      topDrawerGroup.add(boxBottom);
+
+      const boxSides = new THREE.Mesh(new THREE.BoxGeometry(drawerW * 0.92, topDrawerH * 0.6, depth * 0.75), drawerInteriorMat);
+      boxSides.position.set(0, 0, 0.05);
+      topDrawerGroup.add(boxSides);
+
+      // Cutlery Tray with 3D Silverware inside
+      const cutleryTray = new THREE.Mesh(new THREE.BoxGeometry(drawerW * 0.85, 0.02, depth * 0.6), cutlerySteelMat);
+      cutleryTray.position.set(0, -topDrawerH / 2 + 0.04, 0.05);
+      topDrawerGroup.add(cutleryTray);
+
+      // Register animatable drawer
+      topDrawerGroup.userData = {
+        isAnimatable: true,
+        type: 'drawer',
+        name: `Tandem Cutlery Drawer (Unit ${m + 1})`,
+        axis: 'z',
+        closedVal: 0,
+        openVal: 0.45,
+        currentProgress: 0,
+        targetProgress: 0,
+        rotY
+      };
+      animatables.push(topDrawerGroup);
+      group.add(topDrawerGroup);
+
+      // 2. BOTTOM DEEP POT DRAWER (Animatable forward glide)
+      const botDrawerH = cabinetH * 0.62;
+      const botDrawerY = 0.15 + botDrawerH / 2;
+
+      const botDrawerGroup = new THREE.Group();
+      botDrawerGroup.position.set(mx, botDrawerY, 0);
+
+      const botFront = new THREE.Mesh(new THREE.BoxGeometry(drawerW, botDrawerH - 0.015, 0.02), cabinetMat);
+      botFront.position.set(0, 0, depth / 2 + 0.01);
+      botFront.castShadow = true;
+      botDrawerGroup.add(botFront);
+
+      const botHandle = new THREE.Mesh(
+        new THREE.BoxGeometry(drawerW * 0.6, 0.015, 0.02),
+        handleType === 'brass' ? brassMat : applianceSteelMat
+      );
+      botHandle.position.set(0, botDrawerH * 0.35, depth / 2 + 0.025);
+      botDrawerGroup.add(botHandle);
+
+      // Interior deep drawer box
+      const botSides = new THREE.Mesh(new THREE.BoxGeometry(drawerW * 0.92, botDrawerH * 0.7, depth * 0.75), drawerInteriorMat);
+      botSides.position.set(0, 0, 0.05);
+      botDrawerGroup.add(botSides);
+
+      botDrawerGroup.userData = {
+        isAnimatable: true,
+        type: 'drawer',
+        name: `Deep Tandem Pot Drawer (Unit ${m + 1})`,
+        axis: 'z',
+        closedVal: 0,
+        openVal: 0.45,
+        currentProgress: 0,
+        targetProgress: 0,
+        rotY
+      };
+      animatables.push(botDrawerGroup);
+      group.add(botDrawerGroup);
     }
 
-    // Countertop
+    // Polished 20mm Quartz Countertop
     const counterGeo = new THREE.BoxGeometry(width + 0.04, 0.06, depth + 0.05);
     const counter = new THREE.Mesh(counterGeo, counterMat);
     counter.position.set(0, 0.15 + cabinetH + 0.03, 0.025);
@@ -254,32 +379,75 @@ export function buildKitchenModel(layoutType, dimensions, visuals) {
     counter.receiveShadow = true;
     group.add(counter);
 
+    // Bevel top edge specular highlight
+    const bevelEdge = new THREE.Mesh(
+      new THREE.BoxGeometry(width + 0.04, 0.006, 0.008),
+      new THREE.MeshBasicMaterial({ color: 0xFFFFFF })
+    );
+    bevelEdge.position.set(0, 0.15 + cabinetH + 0.06, depth / 2 + 0.05);
+    group.add(bevelEdge);
+
     group.position.set(x, 0, z);
     group.rotation.y = rotY;
     return group;
   }
 
-  // Helper to create overhead cabinet run
+  // Helper to create overhead cabinet run with hydraulic bi-fold / swing opening
   function createOverheadRun(width, depth, height, x, y, z, rotY = 0) {
     const group = new THREE.Group();
-    const cabGeo = new THREE.BoxGeometry(width, height, depth);
-    const cab = new THREE.Mesh(cabGeo, cabinetMat);
-    cab.position.set(0, height / 2, 0);
+
+    // Carcass body
+    const cabGeo = new THREE.BoxGeometry(width, height, depth * 0.95);
+    const cab = new THREE.Mesh(cabGeo, new THREE.MeshStandardMaterial({ color: 0x2A2A2A, roughness: 0.6 }));
+    cab.position.set(0, height / 2, -depth * 0.02);
     cab.castShadow = true;
     cab.receiveShadow = true;
     group.add(cab);
 
-    // Subtle door partitions
-    const numDoors = Math.max(2, Math.round(width / 0.6));
+    // Individual Shutter doors with animatable lift-up swing
+    const numDoors = Math.max(2, Math.round(width / 0.65));
     const doorW = width / numDoors;
-    for (let i = 0; i <= numDoors; i++) {
-      const lineGeo = new THREE.BoxGeometry(0.006, height, 0.01);
-      const line = new THREE.Mesh(lineGeo, kickplateMat);
-      line.position.set(-width / 2 + i * doorW, height / 2, depth / 2 + 0.005);
-      group.add(line);
+
+    for (let i = 0; i < numDoors; i++) {
+      const doorX = -width / 2 + (i + 0.5) * doorW;
+
+      // Pivot group placed at the top edge of the cabinet door for realistic hydraulic lift-up
+      const pivotGroup = new THREE.Group();
+      pivotGroup.position.set(doorX, height, depth / 2 + 0.005);
+
+      // Door mesh hanging down from pivot
+      const doorMesh = new THREE.Mesh(new THREE.BoxGeometry(doorW - 0.008, height - 0.01, 0.02), cabinetMat);
+      doorMesh.position.set(0, -height / 2, 0);
+      doorMesh.castShadow = true;
+      pivotGroup.add(doorMesh);
+
+      // Handle at bottom
+      const handle = new THREE.Mesh(
+        new THREE.BoxGeometry(doorW * 0.5, 0.015, 0.02),
+        handleType === 'brass' ? brassMat : applianceSteelMat
+      );
+      handle.position.set(0, -height + 0.06, 0.015);
+      pivotGroup.add(handle);
+
+      // Internal illuminated glass shelf
+      const shelf = new THREE.Mesh(new THREE.BoxGeometry(doorW * 0.9, 0.012, depth * 0.8), glassMat);
+      shelf.position.set(doorX, height * 0.5, 0);
+      group.add(shelf);
+
+      pivotGroup.userData = {
+        isAnimatable: true,
+        type: 'overhead',
+        name: `Hydraulic Overhead Shutter (Unit ${i + 1})`,
+        axis: 'x',
+        openAngle: -Math.PI / 2.3, // Swings upward
+        currentProgress: 0,
+        targetProgress: 0
+      };
+      animatables.push(pivotGroup);
+      group.add(pivotGroup);
     }
 
-    // Under-cabinet LED Strip light source & glow
+    // Under-cabinet LED Strip light source & warm glow
     if (lightsOn) {
       const ledBarGeo = new THREE.BoxGeometry(width * 0.95, 0.01, 0.03);
       const ledBarMat = new THREE.MeshBasicMaterial({ color: 0xFFE0B2 });
@@ -287,7 +455,7 @@ export function buildKitchenModel(layoutType, dimensions, visuals) {
       ledBar.position.set(0, -0.01, depth * 0.2);
       group.add(ledBar);
 
-      const stripLight = new THREE.PointLight(0xFFD180, 1.2, 2.5);
+      const stripLight = new THREE.PointLight(0xFFD180, 1.4, 2.8, 2);
       stripLight.position.set(0, -0.1, depth * 0.2);
       group.add(stripLight);
     }
@@ -312,34 +480,38 @@ export function buildKitchenModel(layoutType, dimensions, visuals) {
     const group = new THREE.Group();
 
     // Hob (Gas / Induction)
-    const hobBase = new THREE.Mesh(new THREE.BoxGeometry(0.75, 0.02, 0.5), glassMat);
+    const hobBase = new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.025, 0.52), glassMat);
     hobBase.position.set(0, 1.05, 0);
     group.add(hobBase);
 
-    // 4 Burner rings
-    const burnerGeo = new THREE.CylinderGeometry(0.06, 0.07, 0.015, 16);
-    const burnerMat = brassMat;
-    const offsets = [[-0.2, -0.12], [0.2, -0.12], [-0.15, 0.12], [0.15, 0.12]];
+    // 4 Burner rings with brass caps
+    const burnerGeo = new THREE.CylinderGeometry(0.065, 0.075, 0.018, 24);
+    const offsets = [[-0.2, -0.12], [0.2, -0.12], [-0.16, 0.13], [0.16, 0.13]];
     offsets.forEach(([bx, bz]) => {
-      const burner = new THREE.Mesh(burnerGeo, burnerMat);
+      const burner = new THREE.Mesh(burnerGeo, brassMat);
       burner.position.set(bx, 1.065, bz);
       group.add(burner);
     });
 
     // Chimney Hood
-    const chimneyBase = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.08, 0.5), applianceSteelMat);
+    const chimneyBase = new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.08, 0.5), applianceSteelMat);
     chimneyBase.position.set(0, 2.05, 0);
     chimneyBase.castShadow = true;
     group.add(chimneyBase);
 
-    const chimneyCurved = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.35, 0.15), glassMat);
+    const chimneyCurved = new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.35, 0.15), glassMat);
     chimneyCurved.position.set(0, 2.15, 0.18);
     chimneyCurved.rotation.x = -0.3;
     group.add(chimneyCurved);
 
-    const chimneyDuct = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.9, 0.28), applianceSteelMat);
+    const chimneyDuct = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.9, 0.3), applianceSteelMat);
     chimneyDuct.position.set(0, 2.55, -0.05);
     group.add(chimneyDuct);
+
+    // Chimney LED spotlight
+    const chimneyLight = new THREE.PointLight(0xFFE8D0, 1.2, 2.0);
+    chimneyLight.position.set(0, 2.0, 0.1);
+    group.add(chimneyLight);
 
     group.position.set(x, 0, z);
     group.rotation.y = rotY;
@@ -350,25 +522,30 @@ export function buildKitchenModel(layoutType, dimensions, visuals) {
   function createSinkAndFaucet(x, z, rotY = 0) {
     const group = new THREE.Group();
 
-    // Sink basin
-    const sinkRim = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.02, 0.5), applianceSteelMat);
+    // Sink basin rim
+    const sinkRim = new THREE.Mesh(new THREE.BoxGeometry(0.82, 0.02, 0.52), applianceSteelMat);
     sinkRim.position.set(0, 1.04, 0);
     group.add(sinkRim);
 
-    const basinInner = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.25, 0.42), applianceSteelMat);
-    basinInner.position.set(0, 0.9, 0);
+    const basinInner = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.28, 0.44), applianceSteelMat);
+    basinInner.position.set(0, 0.88, 0);
     group.add(basinInner);
 
     // High-arc gooseneck faucet
     const faucetGroup = new THREE.Group();
-    const baseCyl = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.025, 0.1, 16), chromeMat);
+    const baseCyl = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.028, 0.12, 20), chromeMat);
     baseCyl.position.set(0, 1.08, -0.18);
     faucetGroup.add(baseCyl);
 
-    const neckCurve = new THREE.Mesh(new THREE.TorusGeometry(0.12, 0.015, 12, 24, Math.PI), chromeMat);
+    const neckCurve = new THREE.Mesh(new THREE.TorusGeometry(0.14, 0.016, 16, 32, Math.PI), chromeMat);
     neckCurve.position.set(0, 1.25, -0.18);
     neckCurve.rotation.y = Math.PI / 2;
     faucetGroup.add(neckCurve);
+
+    // Pull out spray head
+    const sprayHead = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.024, 0.06, 16), chromeMat);
+    sprayHead.position.set(0, 1.18, -0.04);
+    faucetGroup.add(sprayHead);
 
     group.add(faucetGroup);
 
@@ -383,6 +560,9 @@ export function buildKitchenModel(layoutType, dimensions, visuals) {
     const towerH = 2.4;
     const towerW = 0.65;
     const towerD = 0.65;
+
+    // Contact shadow
+    addContactShadow(group, towerW, towerD, 0, 0);
 
     const body = new THREE.Mesh(new THREE.BoxGeometry(towerW, towerH, towerD), cabinetMat);
     body.position.set(0, towerH / 2, 0);
@@ -410,33 +590,75 @@ export function buildKitchenModel(layoutType, dimensions, visuals) {
     const fridgeH = 2.0;
     const fridgeD = 0.75;
 
+    addContactShadow(group, fridgeW, fridgeD, 0, 0);
+
     const body = new THREE.Mesh(new THREE.BoxGeometry(fridgeW, fridgeH, fridgeD), applianceSteelMat);
     body.position.set(0, fridgeH / 2, 0);
     body.castShadow = true;
     group.add(body);
 
-    // French door line
+    // French door vertical split
     const split = new THREE.Mesh(new THREE.BoxGeometry(0.008, fridgeH * 0.65, 0.02), kickplateMat);
     split.position.set(0, fridgeH * 0.65, fridgeD / 2 + 0.01);
     group.add(split);
+
+    // Brushed metal handles
+    [-0.04, 0.04].forEach(hx => {
+      const hnd = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.01, 0.6, 12), chromeMat);
+      hnd.position.set(hx, 1.25, fridgeD / 2 + 0.03);
+      group.add(hnd);
+    });
 
     group.position.set(x, 0, z);
     return group;
   }
 
-  // Kitchen Island with Breakfast Bar
+  // Kitchen Island with Waterfall Marble & Animatable Drawers
   function createKitchenIsland(x, z) {
     const group = new THREE.Group();
-    const islandW = 2.2;
-    const islandD = 1.0;
+    const islandW = 2.3;
+    const islandD = 1.05;
     const islandH = 0.88;
 
-    // Island base
+    addContactShadow(group, islandW + 0.2, islandD + 0.2, 0, 0);
+
+    // Island base carcass
     const base = new THREE.Mesh(new THREE.BoxGeometry(islandW, islandH, islandD), cabinetMat);
     base.position.set(0, islandH / 2 + 0.1, 0);
     base.castShadow = true;
     base.receiveShadow = true;
     group.add(base);
+
+    // Animatable Island Drawers (Front facing)
+    const islandModCount = 3;
+    const iModW = islandW / islandModCount;
+    for (let i = 0; i < islandModCount; i++) {
+      const ix = -islandW / 2 + (i + 0.5) * iModW;
+      const iDrawerGroup = new THREE.Group();
+      iDrawerGroup.position.set(ix, islandH * 0.55 + 0.1, 0);
+
+      const iFront = new THREE.Mesh(new THREE.BoxGeometry(iModW - 0.02, islandH * 0.7, 0.02), cabinetMat);
+      iFront.position.set(0, 0, islandD / 2 + 0.01);
+      iDrawerGroup.add(iFront);
+
+      const iHandle = new THREE.Mesh(new THREE.BoxGeometry(iModW * 0.5, 0.015, 0.02), brassMat);
+      iHandle.position.set(0, islandH * 0.25, islandD / 2 + 0.025);
+      iDrawerGroup.add(iHandle);
+
+      iDrawerGroup.userData = {
+        isAnimatable: true,
+        type: 'drawer',
+        name: `Island Storage Drawer ${i + 1}`,
+        axis: 'z',
+        closedVal: 0,
+        openVal: 0.42,
+        currentProgress: 0,
+        targetProgress: 0,
+        rotY: 0
+      };
+      animatables.push(iDrawerGroup);
+      group.add(iDrawerGroup);
+    }
 
     // Waterfall Countertop
     const top = new THREE.Mesh(new THREE.BoxGeometry(islandW + 0.1, 0.07, islandD + 0.2), counterMat);
@@ -454,10 +676,11 @@ export function buildKitchenModel(layoutType, dimensions, visuals) {
     group.add(rightWaterfall);
 
     // 2 Minimalist Bar Stools
-    [-0.5, 0.5].forEach(sx => {
+    [-0.55, 0.55].forEach(sx => {
       const stoolGroup = new THREE.Group();
       const seat = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.04, 24), brassMat);
       seat.position.set(0, 0.68, 0);
+      seat.castShadow = true;
       stoolGroup.add(seat);
 
       const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.65, 12), applianceSteelMat);
@@ -468,18 +691,18 @@ export function buildKitchenModel(layoutType, dimensions, visuals) {
       baseRing.position.set(0, 0.01, 0);
       stoolGroup.add(baseRing);
 
-      stoolGroup.position.set(sx, 0, islandD / 2 + 0.45);
+      stoolGroup.position.set(sx, 0, islandD / 2 + 0.48);
       group.add(stoolGroup);
     });
 
     // Hanging Pendants above Island
     if (lightsOn) {
-      [-0.6, 0.6].forEach(px => {
+      [-0.65, 0.65].forEach(px => {
         const wire = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, 1.2, 8), applianceSteelMat);
         wire.position.set(px, 2.8, 0);
         group.add(wire);
 
-        const shade = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.22, 16, 1, true), brassMat);
+        const shade = new THREE.Mesh(new THREE.ConeGeometry(0.13, 0.24, 20, 1, true), brassMat);
         shade.position.set(px, 2.15, 0);
         group.add(shade);
 
@@ -487,7 +710,7 @@ export function buildKitchenModel(layoutType, dimensions, visuals) {
         bulb.position.set(px, 2.08, 0);
         group.add(bulb);
 
-        const pendantLight = new THREE.PointLight(0xFFD180, 1.5, 3.5);
+        const pendantLight = new THREE.PointLight(0xFFD180, 1.8, 4.0, 2);
         pendantLight.position.set(px, 2.0, 0);
         group.add(pendantLight);
       });
@@ -505,7 +728,6 @@ export function buildKitchenModel(layoutType, dimensions, visuals) {
   const leftX = -(roomW / 2) + runD / 2 + 0.1;
 
   if (layoutType === 'Straight') {
-    // 1. Single Long Counter along Back Wall
     const counterWidth = Math.min(roomW * 0.9, 5.0);
     kitchenGroup.add(createLowerRun(counterWidth, runD, 0, backZ, 0));
     kitchenGroup.add(createBacksplashPanel(counterWidth, 0.75, 0, 1.45, backZ - runD / 2 - 0.01, 0));
@@ -518,9 +740,7 @@ export function buildKitchenModel(layoutType, dimensions, visuals) {
     kitchenGroup.add(createRefrigerator(counterWidth / 2 + 0.55, backZ));
 
   } else if (layoutType === 'Parallel') {
-    // 2. Parallel Kitchen: Two opposing runs
     const counterWidth = Math.min(roomW * 0.85, 4.2);
-    // Back run (Cooking zone)
     kitchenGroup.add(createLowerRun(counterWidth, runD, 0, backZ, 0));
     kitchenGroup.add(createBacksplashPanel(counterWidth, 0.75, 0, 1.45, backZ - runD / 2 - 0.01, 0));
     if (showUpperCabinets) {
@@ -528,18 +748,15 @@ export function buildKitchenModel(layoutType, dimensions, visuals) {
     }
     kitchenGroup.add(createCooktopAndChimney(0, backZ, 0));
 
-    // Front run (Wet / Prep zone)
     const frontZ = backZ + 1.8;
     kitchenGroup.add(createLowerRun(counterWidth, runD, 0, frontZ, Math.PI));
     kitchenGroup.add(createSinkAndFaucet(0, frontZ, Math.PI));
     kitchenGroup.add(createRefrigerator(counterWidth / 2 + 0.55, backZ));
 
   } else if (layoutType === 'U-Shaped') {
-    // 3. U-Shaped Kitchen: Back, Left, and Right runs
     const backW = Math.min(roomW * 0.9, 4.5);
     const sideL = Math.min(roomD * 0.75, 3.2);
 
-    // Back Run
     kitchenGroup.add(createLowerRun(backW, runD, 0, backZ, 0));
     kitchenGroup.add(createBacksplashPanel(backW, 0.75, 0, 1.45, backZ - runD / 2 - 0.01, 0));
     if (showUpperCabinets) {
@@ -547,43 +764,32 @@ export function buildKitchenModel(layoutType, dimensions, visuals) {
     }
     kitchenGroup.add(createCooktopAndChimney(0, backZ, 0));
 
-    // Left Run
-    const leftRunX = -(backW / 2) + runD / 2;
-    kitchenGroup.add(createLowerRun(sideL, runD, leftRunX, backZ + sideL / 2, Math.PI / 2));
-    kitchenGroup.add(createBacksplashPanel(sideL, 0.75, leftRunX - runD / 2 - 0.01, 1.45, backZ + sideL / 2, Math.PI / 2));
-    kitchenGroup.add(createSinkAndFaucet(leftRunX, backZ + sideL / 2, Math.PI / 2));
+    const leftZ = backZ + sideL / 2;
+    kitchenGroup.add(createLowerRun(sideL, runD, -backW / 2 + runD / 2, leftZ, Math.PI / 2));
+    kitchenGroup.add(createSinkAndFaucet(-backW / 2 + runD / 2, leftZ, Math.PI / 2));
 
-    // Right Run
-    const rightRunX = (backW / 2) - runD / 2;
-    kitchenGroup.add(createLowerRun(sideL, runD, rightRunX, backZ + sideL / 2, -Math.PI / 2));
-    kitchenGroup.add(createTallUnit(rightRunX, backZ + sideL + 0.4));
+    const rightZ = backZ + sideL / 2;
+    kitchenGroup.add(createLowerRun(sideL, runD, backW / 2 - runD / 2, rightZ, -Math.PI / 2));
+    kitchenGroup.add(createRefrigerator(backW / 2 + 0.3, backZ + sideL - 0.2));
 
   } else if (layoutType === 'Island') {
-    // 4. Island Layout: L-Shape base + central Island with Breakfast counter
-    const backW = Math.min(roomW * 0.9, 4.5);
-    const sideL = Math.min(roomD * 0.7, 2.8);
-
+    const backW = Math.min(roomW * 0.9, 4.6);
     kitchenGroup.add(createLowerRun(backW, runD, 0, backZ, 0));
     kitchenGroup.add(createBacksplashPanel(backW, 0.75, 0, 1.45, backZ - runD / 2 - 0.01, 0));
     if (showUpperCabinets) {
       kitchenGroup.add(createOverheadRun(backW, 0.38, 0.8, 0, 1.9, backZ - 0.12, 0));
     }
-    kitchenGroup.add(createCooktopAndChimney(-0.5, backZ, 0));
-    kitchenGroup.add(createTallUnit(backW / 2 - 0.35, backZ));
+    kitchenGroup.add(createCooktopAndChimney(-0.6, backZ, 0));
+    kitchenGroup.add(createSinkAndFaucet(0.9, backZ, 0));
+    kitchenGroup.add(createRefrigerator(backW / 2 + 0.55, backZ));
 
-    const leftRunX = -(backW / 2) + runD / 2;
-    kitchenGroup.add(createLowerRun(sideL, runD, leftRunX, backZ + sideL / 2, Math.PI / 2));
-    kitchenGroup.add(createSinkAndFaucet(leftRunX, backZ + sideL / 2, Math.PI / 2));
-
-    // Freestanding Island
     if (showIsland) {
-      kitchenGroup.add(createKitchenIsland(0.2, backZ + 1.8));
+      kitchenGroup.add(createKitchenIsland(0, backZ + 1.8));
     }
 
   } else if (layoutType === 'G-Shaped') {
-    // 5. G-Shaped Kitchen: U-Shape + Peninsula breakfast counter
-    const backW = Math.min(roomW * 0.9, 4.2);
-    const sideL = Math.min(roomD * 0.7, 2.8);
+    const backW = Math.min(roomW * 0.9, 4.5);
+    const sideL = Math.min(roomD * 0.75, 3.2);
 
     kitchenGroup.add(createLowerRun(backW, runD, 0, backZ, 0));
     kitchenGroup.add(createBacksplashPanel(backW, 0.75, 0, 1.45, backZ - runD / 2 - 0.01, 0));
@@ -592,38 +798,37 @@ export function buildKitchenModel(layoutType, dimensions, visuals) {
     }
     kitchenGroup.add(createCooktopAndChimney(0, backZ, 0));
 
-    const leftRunX = -(backW / 2) + runD / 2;
-    kitchenGroup.add(createLowerRun(sideL, runD, leftRunX, backZ + sideL / 2, Math.PI / 2));
-    kitchenGroup.add(createSinkAndFaucet(leftRunX, backZ + sideL / 2, Math.PI / 2));
+    const leftZ = backZ + sideL / 2;
+    kitchenGroup.add(createLowerRun(sideL, runD, -backW / 2 + runD / 2, leftZ, Math.PI / 2));
+    kitchenGroup.add(createSinkAndFaucet(-backW / 2 + runD / 2, leftZ, Math.PI / 2));
 
-    const rightRunX = (backW / 2) - runD / 2;
-    kitchenGroup.add(createLowerRun(sideL, runD, rightRunX, backZ + sideL / 2, -Math.PI / 2));
+    const rightZ = backZ + sideL / 2;
+    kitchenGroup.add(createLowerRun(sideL, runD, backW / 2 - runD / 2, rightZ, -Math.PI / 2));
 
-    // G-Shape Peninsula
-    kitchenGroup.add(createLowerRun(1.6, runD, rightRunX - 0.8, backZ + sideL - runD / 2, Math.PI));
+    // Peninsula Counter
+    const penW = 1.8;
+    const penZ = backZ + sideL;
+    kitchenGroup.add(createLowerRun(penW, runD, backW / 2 - runD / 2 - penW / 2 + runD / 2, penZ, Math.PI));
+    kitchenGroup.add(createTallUnit(-backW / 2 - 0.45, backZ + 0.3));
 
   } else {
-    // 6. Default: Classic L-Shaped Kitchen
+    // Default: L-Shaped Kitchen
     const backW = Math.min(roomW * 0.85, 4.2);
-    const sideL = Math.min(roomD * 0.75, 3.2);
+    const sideL = Math.min(roomD * 0.75, 3.0);
 
-    // Back Run (Cooking zone)
     kitchenGroup.add(createLowerRun(backW, runD, 0, backZ, 0));
     kitchenGroup.add(createBacksplashPanel(backW, 0.75, 0, 1.45, backZ - runD / 2 - 0.01, 0));
+
     if (showUpperCabinets) {
-      kitchenGroup.add(createOverheadRun(backW - 0.7, 0.38, 0.8, 0.35, 1.9, backZ - 0.12, 0));
+      kitchenGroup.add(createOverheadRun(backW, 0.38, 0.8, 0, 1.9, backZ - 0.12, 0));
     }
-    kitchenGroup.add(createCooktopAndChimney(0.2, backZ, 0));
+    kitchenGroup.add(createCooktopAndChimney(-0.3, backZ, 0));
 
-    // Left Run (Sink & cleaning zone)
-    const leftRunX = -(backW / 2) + runD / 2;
-    kitchenGroup.add(createLowerRun(sideL, runD, leftRunX, backZ + sideL / 2, Math.PI / 2));
-    kitchenGroup.add(createBacksplashPanel(sideL, 0.75, leftRunX - runD / 2 - 0.01, 1.45, backZ + sideL / 2, Math.PI / 2));
-    kitchenGroup.add(createSinkAndFaucet(leftRunX, backZ + sideL / 2, Math.PI / 2));
-
-    // Tall Unit & Fridge on right end
-    kitchenGroup.add(createTallUnit(backW / 2 - 0.35, backZ));
-    kitchenGroup.add(createRefrigerator(backW / 2 + 0.45, backZ));
+    const leftZ = backZ + sideL / 2;
+    kitchenGroup.add(createLowerRun(sideL, runD, -backW / 2 + runD / 2, leftZ, Math.PI / 2));
+    kitchenGroup.add(createSinkAndFaucet(-backW / 2 + runD / 2, leftZ, Math.PI / 2));
+    kitchenGroup.add(createRefrigerator(backW / 2 + 0.55, backZ));
+    kitchenGroup.add(createTallUnit(backW / 2 + 0.55, backZ + 1.0));
   }
 
   return kitchenGroup;

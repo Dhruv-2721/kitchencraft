@@ -5,6 +5,7 @@ import {
   Calendar, ChevronRight, Award, Zap, PhoneCall
 } from 'lucide-react';
 import KitchenScene3D from '../components/3d/KitchenScene3D.jsx';
+import Card3DTilt from '../components/common/Card3DTilt.jsx';
 import { useProject } from '../context/ProjectContext.jsx';
 
 export default function HomePage({ onSelectTab }) {
@@ -188,9 +189,9 @@ export default function HomePage({ onSelectTab }) {
               </div>
             </div>
 
-            {/* Right Hero Image (6 Cols) */}
+            {/* Right Hero Image (6 Cols) with 3D Tilt */}
             <div className="lg:col-span-6 relative">
-              <div className="relative rounded-3xl overflow-hidden card-shadow border border-[#D9C8AE]/60 group">
+              <Card3DTilt maxTilt={9} scale={1.02} className="rounded-3xl overflow-hidden card-shadow border border-[#D9C8AE]/60 group">
                 <img
                   src="https://images.unsplash.com/photo-1556911220-e15b29be8c8f?auto=format&fit=crop&w=1200&q=85"
                   alt="Modern Luxury Modular Kitchen"
@@ -212,7 +213,7 @@ export default function HomePage({ onSelectTab }) {
                     <Box className="w-3.5 h-3.5" /> View in 3D
                   </button>
                 </div>
-              </div>
+              </Card3DTilt>
             </div>
           </div>
         </div>
@@ -287,7 +288,7 @@ export default function HomePage({ onSelectTab }) {
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           {featuredDesigns.map((d, i) => (
-            <div key={i} className="bg-white rounded-3xl overflow-hidden border border-[#D9C8AE]/50 card-shadow group">
+            <Card3DTilt key={i} maxTilt={8} className="bg-white rounded-3xl overflow-hidden border border-[#D9C8AE]/50 card-shadow group">
               <div className="h-60 overflow-hidden relative">
                 <img
                   src={d.image}
@@ -322,7 +323,7 @@ export default function HomePage({ onSelectTab }) {
                   </button>
                 </div>
               </div>
-            </div>
+            </Card3DTilt>
           ))}
         </div>
       </section>

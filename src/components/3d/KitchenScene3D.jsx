@@ -2,22 +2,26 @@ import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import {
   Camera, Eye, Sun, Moon, Sparkles, Maximize2, Minimize2,
-  Download, Play, Square, Check, RefreshCw, Palette
+  Download, Play, Square, Check, RefreshCw, Palette,
+  RotateCw, FolderOpen, FolderCheck, Info
 } from 'lucide-react';
 import { buildKitchenModel } from './KitchenProceduralModel.js';
 import { useProject } from '../../context/ProjectContext.jsx';
 
-export default function KitchenScene3D({ className = '', height = '600px' }) {
+export default function KitchenScene3D({ className = '', height = '620px' }) {
   const containerRef = useRef(null);
   const { layoutType, dimensions, visuals, updateVisual, saveProject } = useProject();
 
-  const [activeView, setActiveView] = useState('perspective'); // 'perspective', 'top', 'front', 'isometric', 'island'
+  const [activeView, setActiveView] = useState('perspective');
   const [isWalkthrough, setIsWalkthrough] = useState(false);
+  const [isAutoOrbit, setIsAutoOrbit] = useState(false);
+  const [cabinetsOpen, setCabinetsOpen] = useState(false);
+  const [hoveredItemName, setHoveredItemName] = useState(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [walkthroughProgress, setWalkthroughProgress] = useState(0);
   const [savedNotification, setSavedNotification] = useState(false);
 
-  // References to keep Three.js scene instances persistent across re-renders
+  // Three.js instances
   const sceneRef = useRef(null);
   const cameraRef = useRef(null);
   const rendererRef = useRef(null);
@@ -27,13 +31,19 @@ export default function KitchenScene3D({ className = '', height = '600px' }) {
   const animFrameRef = useRef(null);
   const isDraggingRef = useRef(false);
   const prevMousePosRef = useRef({ x: 0, y: 0 });
+  const raycasterRef = useRef(new THREE.Raycaster());
+  const mouseRef = useRef(new THREE.Vector2());
 
-  // Camera target & spherical orbit values
+  // Camera target & damped spherical physics
   const orbitRef = useRef({
-    theta: Math.PI / 4,
-    phi: Math.PI / 3.2,
-    radius: 6.8,
-    target: new THREE.Vector3(0, 1.2, 0)
+    currentTheta: Math.PI / 4.2,
+    targetTheta: Math.PI / 4.2,
+    currentPhi: Math.PI / 2.8,
+    targetPhi: Math.PI / 2.8,
+    currentRadius: 6.8,
+    targetRadius: 6.8,
+    currentLookAt: new THREE.Vector3(0, 1.2, 0),
+    targetLookAt: new THREE.Vector3(0, 1.2, 0)
   });
 
   // Setup Three.js Scene on mount
@@ -45,22 +55,21 @@ export default function KitchenScene3D({ className = '', height = '600px' }) {
 
     // 1. Scene
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(visuals.lightingMode === 'evening' ? '#1A1815' : '#F4EFE6');
+    scene.background = new THREE.Color(visuals.lightingMode === 'evening' ? '#181614' : '#F4EFE6');
     sceneRef.current = scene;
 
     // 2. Camera
     const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 100);
     cameraRef.current = camera;
-    updateCameraPosition();
 
-    // 3. Renderer with antialiasing and shadow support
+    // 3. Renderer with antialiasing, shadow map, tone mapping
     const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
     renderer.setSize(width, height);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = visuals.lightingMode === 'evening' ? 0.9 : 1.15;
+    renderer.toneMappingExposure = visuals.lightingMode === 'evening' ? 0.95 : 1.18;
     rendererRef.current = renderer;
 
     containerRef.current.innerHTML = '';
@@ -69,22 +78,22 @@ export default function KitchenScene3D({ className = '', height = '600px' }) {
     // 4. Lighting Rig
     const ambientLight = new THREE.AmbientLight(
       visuals.lightingMode === 'evening' ? 0xFFE8D0 : 0xFFFFFF,
-      visuals.lightingMode === 'evening' ? 0.6 : 0.85
+      visuals.lightingMode === 'evening' ? 0.65 : 0.9
     );
     scene.add(ambientLight);
     ambientLightRef.current = ambientLight;
 
-    const dirLight = new THREE.DirectionalLight(0xFFF9F0, visuals.lightingMode === 'evening' ? 0.8 : 1.3);
+    const dirLight = new THREE.DirectionalLight(0xFFF9F0, visuals.lightingMode === 'evening' ? 0.85 : 1.35);
     dirLight.position.set(4, 7, 5);
     dirLight.castShadow = true;
     dirLight.shadow.mapSize.width = 2048;
     dirLight.shadow.mapSize.height = 2048;
-    dirLight.shadow.bias = -0.0005;
+    dirLight.shadow.bias = -0.0004;
     scene.add(dirLight);
     dirLightRef.current = dirLight;
 
-    // Soft ceiling fill light
-    const fillLight = new THREE.DirectionalLight(0xD9C8AE, 0.4);
+    // Soft architectural fill light
+    const fillLight = new THREE.DirectionalLight(0xD9C8AE, 0.45);
     fillLight.position.set(-4, 5, -3);
     scene.add(fillLight);
 
@@ -93,7 +102,7 @@ export default function KitchenScene3D({ className = '', height = '600px' }) {
     scene.add(model);
     modelGroupRef.current = model;
 
-    // 6. Mouse Orbit & Pan Handlers
+    // 6. Interactive Mouse & Touch Handlers
     const dom = renderer.domElement;
 
     const onMouseDown = (e) => {
@@ -102,14 +111,19 @@ export default function KitchenScene3D({ className = '', height = '600px' }) {
     };
 
     const onMouseMove = (e) => {
-      if (!isDraggingRef.current || isWalkthrough) return;
-      const deltaX = e.clientX - prevMousePosRef.current.x;
-      const deltaY = e.clientY - prevMousePosRef.current.y;
-      prevMousePosRef.current = { x: e.clientX, y: e.clientY };
+      const rect = dom.getBoundingClientRect();
+      mouseRef.current.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      mouseRef.current.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
 
-      orbitRef.current.theta -= deltaX * 0.006;
-      orbitRef.current.phi = Math.max(0.1, Math.min(Math.PI / 2.05, orbitRef.current.phi - deltaY * 0.006));
-      updateCameraPosition();
+      if (isDraggingRef.current && !isWalkthrough) {
+        const deltaX = e.clientX - prevMousePosRef.current.x;
+        const deltaY = e.clientY - prevMousePosRef.current.y;
+        prevMousePosRef.current = { x: e.clientX, y: e.clientY };
+
+        orbitRef.current.targetTheta -= deltaX * 0.007;
+        orbitRef.current.targetPhi = Math.max(0.08, Math.min(Math.PI / 2.05, orbitRef.current.targetPhi - deltaY * 0.007));
+        setIsAutoOrbit(false);
+      }
     };
 
     const onMouseUp = () => {
@@ -119,16 +133,39 @@ export default function KitchenScene3D({ className = '', height = '600px' }) {
     const onWheel = (e) => {
       e.preventDefault();
       if (isWalkthrough) return;
-      orbitRef.current.radius = Math.max(2.5, Math.min(14.0, orbitRef.current.radius + e.deltaY * 0.005));
-      updateCameraPosition();
+      orbitRef.current.targetRadius = Math.max(2.4, Math.min(14.0, orbitRef.current.targetRadius + e.deltaY * 0.006));
+    };
+
+    // Click handler to toggle individual drawers/doors on raycast
+    const onClick = (e) => {
+      if (isDraggingRef.current) return;
+      const rect = dom.getBoundingClientRect();
+      const mouseX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      const mouseY = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+      raycasterRef.current.setFromCamera(new THREE.Vector2(mouseX, mouseY), camera);
+      if (modelGroupRef.current) {
+        const intersects = raycasterRef.current.intersectObjects(modelGroupRef.current.children, true);
+        if (intersects.length > 0) {
+          let curr = intersects[0].object;
+          while (curr && curr !== modelGroupRef.current) {
+            if (curr.userData?.isAnimatable) {
+              curr.userData.targetProgress = curr.userData.targetProgress > 0.5 ? 0 : 1;
+              break;
+            }
+            curr = curr.parent;
+          }
+        }
+      }
     };
 
     dom.addEventListener('mousedown', onMouseDown);
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
     dom.addEventListener('wheel', onWheel, { passive: false });
+    dom.addEventListener('click', onClick);
 
-    // Handle Resize
+    // Resize Handler
     const handleResize = () => {
       if (!containerRef.current || !renderer || !camera) return;
       const w = containerRef.current.clientWidth;
@@ -139,9 +176,72 @@ export default function KitchenScene3D({ className = '', height = '600px' }) {
     };
     window.addEventListener('resize', handleResize);
 
-    // 7. Render Loop
+    // 7. Master Physics & Animation Loop
     const animate = () => {
       animFrameRef.current = requestAnimationFrame(animate);
+
+      // Auto Orbit turntable mode
+      if (isAutoOrbit && !isDraggingRef.current && !isWalkthrough) {
+        orbitRef.current.targetTheta += 0.003;
+      }
+
+      // Smooth camera interpolation (Damped physics lerping)
+      const orbit = orbitRef.current;
+      orbit.currentTheta += (orbit.targetTheta - orbit.currentTheta) * 0.08;
+      orbit.currentPhi += (orbit.targetPhi - orbit.currentPhi) * 0.08;
+      orbit.currentRadius += (orbit.targetRadius - orbit.currentRadius) * 0.08;
+      orbit.currentLookAt.lerp(orbit.targetLookAt, 0.08);
+
+      camera.position.x = orbit.currentLookAt.x + orbit.currentRadius * Math.sin(orbit.currentPhi) * Math.sin(orbit.currentTheta);
+      camera.position.y = orbit.currentLookAt.y + orbit.currentRadius * Math.cos(orbit.currentPhi);
+      camera.position.z = orbit.currentLookAt.z + orbit.currentRadius * Math.sin(orbit.currentPhi) * Math.cos(orbit.currentTheta);
+      camera.lookAt(orbit.currentLookAt);
+
+      // Smoothly animate modular drawers and overhead doors
+      if (modelGroupRef.current?.userData?.animatables) {
+        modelGroupRef.current.userData.animatables.forEach((item) => {
+          if (Math.abs(item.userData.currentProgress - item.userData.targetProgress) > 0.001) {
+            item.userData.currentProgress += (item.userData.targetProgress - item.userData.currentProgress) * 0.12;
+
+            if (item.userData.type === 'drawer') {
+              // Slide forward on z-axis
+              const offset = item.userData.openVal * item.userData.currentProgress;
+              item.position.z = item.userData.closedVal + offset;
+            } else if (item.userData.type === 'overhead') {
+              // Lift-up swing on x-axis
+              item.rotation.x = item.userData.openAngle * item.userData.currentProgress;
+            }
+          }
+        });
+      }
+
+      // Raycast hover check for interactive cursor and HUD tooltip
+      if (modelGroupRef.current && !isDraggingRef.current) {
+        raycasterRef.current.setFromCamera(mouseRef.current, camera);
+        const hits = raycasterRef.current.intersectObjects(modelGroupRef.current.children, true);
+        if (hits.length > 0) {
+          let curr = hits[0].object;
+          let foundInteractive = null;
+          while (curr && curr !== modelGroupRef.current) {
+            if (curr.userData?.name) {
+              foundInteractive = curr.userData.name;
+              break;
+            }
+            curr = curr.parent;
+          }
+          if (foundInteractive) {
+            dom.style.cursor = 'pointer';
+            setHoveredItemName(foundInteractive);
+          } else {
+            dom.style.cursor = 'grab';
+            setHoveredItemName(null);
+          }
+        } else {
+          dom.style.cursor = 'grab';
+          setHoveredItemName(null);
+        }
+      }
+
       renderer.render(scene, camera);
     };
     animate();
@@ -152,6 +252,7 @@ export default function KitchenScene3D({ className = '', height = '600px' }) {
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
       dom.removeEventListener('wheel', onWheel);
+      dom.removeEventListener('click', onClick);
       window.removeEventListener('resize', handleResize);
       renderer.dispose();
     };
@@ -168,65 +269,73 @@ export default function KitchenScene3D({ className = '', height = '600px' }) {
     sceneRef.current.add(newModel);
     modelGroupRef.current = newModel;
 
+    // Reset cabinet open state when layout rebuilds
+    setCabinetsOpen(false);
+
     // Adjust environment background & lighting based on visuals.lightingMode
     if (sceneRef.current && dirLightRef.current && ambientLightRef.current) {
       if (visuals.lightingMode === 'evening') {
-        sceneRef.current.background.set('#1A1815');
+        sceneRef.current.background.set('#181614');
         ambientLightRef.current.color.set('#FFE8D0');
-        ambientLightRef.current.intensity = 0.5;
-        dirLightRef.current.intensity = 0.6;
+        ambientLightRef.current.intensity = 0.55;
+        dirLightRef.current.intensity = 0.7;
       } else {
         sceneRef.current.background.set('#F4EFE6');
         ambientLightRef.current.color.set('#FFFFFF');
-        ambientLightRef.current.intensity = 0.85;
-        dirLightRef.current.intensity = 1.3;
+        ambientLightRef.current.intensity = 0.9;
+        dirLightRef.current.intensity = 1.35;
       }
     }
   }, [layoutType, dimensions, visuals]);
 
-  // Spherical camera updater
-  const updateCameraPosition = () => {
-    if (!cameraRef.current) return;
-    const { theta, phi, radius, target } = orbitRef.current;
-    cameraRef.current.position.x = target.x + radius * Math.sin(phi) * Math.sin(theta);
-    cameraRef.current.position.y = target.y + radius * Math.cos(phi);
-    cameraRef.current.position.z = target.z + radius * Math.sin(phi) * Math.cos(theta);
-    cameraRef.current.lookAt(target);
-  };
-
-  // Switch View Presets
+  // Switch View Presets with Damped Easing
   const setCameraView = (view) => {
     setActiveView(view);
     setIsWalkthrough(false);
+    setIsAutoOrbit(false);
 
     if (view === 'top') {
-      orbitRef.current.theta = 0;
-      orbitRef.current.phi = 0.05; // directly overhead
-      orbitRef.current.radius = 8.5;
-      orbitRef.current.target.set(0, 0, 0);
+      orbitRef.current.targetTheta = 0;
+      orbitRef.current.targetPhi = 0.06;
+      orbitRef.current.targetRadius = 8.5;
+      orbitRef.current.targetLookAt.set(0, 0, 0);
     } else if (view === 'front') {
-      orbitRef.current.theta = 0;
-      orbitRef.current.phi = Math.PI / 2.3;
-      orbitRef.current.radius = 6.2;
-      orbitRef.current.target.set(0, 1.2, 0);
+      orbitRef.current.targetTheta = 0;
+      orbitRef.current.targetPhi = Math.PI / 2.3;
+      orbitRef.current.targetRadius = 6.2;
+      orbitRef.current.targetLookAt.set(0, 1.2, 0);
     } else if (view === 'island') {
-      orbitRef.current.theta = Math.PI / 3;
-      orbitRef.current.phi = Math.PI / 2.6;
-      orbitRef.current.radius = 4.2;
-      orbitRef.current.target.set(0, 0.9, 0.5);
+      orbitRef.current.targetTheta = Math.PI / 3;
+      orbitRef.current.targetPhi = Math.PI / 2.6;
+      orbitRef.current.targetRadius = 4.2;
+      orbitRef.current.targetLookAt.set(0, 0.9, 0.5);
     } else if (view === 'isometric') {
-      orbitRef.current.theta = Math.PI / 4;
-      orbitRef.current.phi = Math.PI / 3.4;
-      orbitRef.current.radius = 7.5;
-      orbitRef.current.target.set(0, 1.0, 0);
+      orbitRef.current.targetTheta = Math.PI / 4;
+      orbitRef.current.targetPhi = Math.PI / 3.4;
+      orbitRef.current.targetRadius = 7.5;
+      orbitRef.current.targetLookAt.set(0, 1.0, 0);
     } else {
       // Perspective
-      orbitRef.current.theta = Math.PI / 4.2;
-      orbitRef.current.phi = Math.PI / 2.8;
-      orbitRef.current.radius = 6.8;
-      orbitRef.current.target.set(0, 1.2, 0);
+      orbitRef.current.targetTheta = Math.PI / 4.2;
+      orbitRef.current.targetPhi = Math.PI / 2.8;
+      orbitRef.current.targetRadius = 6.8;
+      orbitRef.current.targetLookAt.set(0, 1.2, 0);
     }
-    updateCameraPosition();
+  };
+
+  // Global Toggle to Open / Close All Cabinets & Drawers
+  const toggleAllCabinets = () => {
+    const nextState = !cabinetsOpen;
+    setCabinetsOpen(nextState);
+
+    if (modelGroupRef.current?.userData?.animatables) {
+      modelGroupRef.current.userData.animatables.forEach((item, index) => {
+        // Staggered soft-close opening animation
+        setTimeout(() => {
+          item.userData.targetProgress = nextState ? 1 : 0;
+        }, index * 40);
+      });
+    }
   };
 
   // Cinematic 3D Walkthrough
@@ -234,13 +343,13 @@ export default function KitchenScene3D({ className = '', height = '600px' }) {
     if (!isWalkthrough) return;
 
     let startTime = Date.now();
-    const duration = 16000; // 16 second cinematic guided tour
+    const duration = 18000;
 
     const tourKeyframes = [
       { t: 0.0, theta: Math.PI / 4, phi: Math.PI / 3, radius: 7.2, target: [0, 1.2, 0] },
-      { t: 0.25, theta: 0.2, phi: Math.PI / 2.4, radius: 4.8, target: [0.2, 1.1, -1.2] }, // Hob & Chimney
-      { t: 0.5, theta: Math.PI / 2.1, phi: Math.PI / 2.3, radius: 4.2, target: [-1.4, 1.0, 0] }, // Sink zone
-      { t: 0.75, theta: Math.PI / 3.2, phi: Math.PI / 2.8, radius: 4.5, target: [0, 0.9, 0.8] }, // Island & seating
+      { t: 0.22, theta: 0.15, phi: Math.PI / 2.4, radius: 4.6, target: [0.2, 1.1, -1.2] }, // Hob & Chimney
+      { t: 0.48, theta: Math.PI / 2.1, phi: Math.PI / 2.3, radius: 4.0, target: [-1.4, 1.0, 0] }, // Sink zone
+      { t: 0.72, theta: Math.PI / 3.2, phi: Math.PI / 2.8, radius: 4.4, target: [0, 0.9, 0.8] }, // Island & seating
       { t: 1.0, theta: Math.PI / 4, phi: Math.PI / 3, radius: 6.8, target: [0, 1.2, 0] } // Overview return
     ];
 
@@ -249,7 +358,6 @@ export default function KitchenScene3D({ className = '', height = '600px' }) {
       const progress = (elapsed % duration) / duration;
       setWalkthroughProgress(Math.round(progress * 100));
 
-      // Interpolate between keyframes
       let k1 = tourKeyframes[0];
       let k2 = tourKeyframes[1];
       for (let i = 0; i < tourKeyframes.length - 1; i++) {
@@ -261,18 +369,16 @@ export default function KitchenScene3D({ className = '', height = '600px' }) {
       }
 
       const segmentFactor = (progress - k1.t) / (k2.t - k1.t);
-      // Smooth easing (cosine)
       const ease = (1 - Math.cos(segmentFactor * Math.PI)) / 2;
 
-      orbitRef.current.theta = k1.theta + (k2.theta - k1.theta) * ease;
-      orbitRef.current.phi = k1.phi + (k2.phi - k1.phi) * ease;
-      orbitRef.current.radius = k1.radius + (k2.radius - k1.radius) * ease;
-      orbitRef.current.target.set(
+      orbitRef.current.targetTheta = k1.theta + (k2.theta - k1.theta) * ease;
+      orbitRef.current.targetPhi = k1.phi + (k2.phi - k1.phi) * ease;
+      orbitRef.current.targetRadius = k1.radius + (k2.radius - k1.radius) * ease;
+      orbitRef.current.targetLookAt.set(
         k1.target[0] + (k2.target[0] - k1.target[0]) * ease,
         k1.target[1] + (k2.target[1] - k1.target[1]) * ease,
         k1.target[2] + (k2.target[2] - k1.target[2]) * ease
       );
-      updateCameraPosition();
     };
 
     const interval = setInterval(runTour, 16);
@@ -310,7 +416,6 @@ export default function KitchenScene3D({ className = '', height = '600px' }) {
     }
   };
 
-  // Color Swatches
   const colorSwatches = [
     { name: 'Dark Olive', hex: '#52634A' },
     { name: 'Warm Cream', hex: '#F8F5EF' },
@@ -351,7 +456,7 @@ export default function KitchenScene3D({ className = '', height = '600px' }) {
                 : 'text-[#292929] hover:bg-[#F0E8DC]'
             }`}
           >
-            Top / Floorplan
+            Floorplan
           </button>
           <button
             onClick={() => setCameraView('front')}
@@ -385,12 +490,40 @@ export default function KitchenScene3D({ className = '', height = '600px' }) {
           </button>
         </div>
 
-        {/* Right Tools: Walkthrough, Capture, Fullscreen */}
+        {/* Right Tools: Interactive Cabinets, Auto-Orbit, Walkthrough, Capture */}
         <div className="flex items-center gap-2 pointer-events-auto">
+          {/* Animate / Open Cabinets button */}
+          <button
+            onClick={toggleAllCabinets}
+            title="Open or Close all drawers and overhead shutters"
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-2xl text-xs font-semibold shadow-lg transition-all ${
+              cabinetsOpen
+                ? 'bg-amber-600 text-white'
+                : 'bg-white/95 text-[#292929] hover:bg-white border border-[#D9C8AE]/50'
+            }`}
+          >
+            {cabinetsOpen ? <FolderCheck className="w-3.5 h-3.5" /> : <FolderOpen className="w-3.5 h-3.5 text-[#52634A]" />}
+            {cabinetsOpen ? 'Close Cabinets' : 'Open Cabinets'}
+          </button>
+
+          {/* 360° Auto Orbit */}
+          <button
+            onClick={() => setIsAutoOrbit(!isAutoOrbit)}
+            title="Continuous 360° Architectural Turntable Orbit"
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-2xl text-xs font-semibold shadow-lg transition-all ${
+              isAutoOrbit
+                ? 'bg-[#52634A] text-white ring-2 ring-[#52634A]/30'
+                : 'bg-white/95 text-[#292929] hover:bg-white border border-[#D9C8AE]/50'
+            }`}
+          >
+            <RotateCw className={`w-3.5 h-3.5 ${isAutoOrbit ? 'animate-spin' : 'text-[#52634A]'}`} />
+            360° Orbit
+          </button>
+
           {/* Cinematic 3D Walkthrough button */}
           <button
             onClick={() => setIsWalkthrough(!isWalkthrough)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-2xl text-xs font-semibold shadow-lg transition-all ${
+            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-2xl text-xs font-semibold shadow-lg transition-all ${
               isWalkthrough
                 ? 'bg-amber-600 text-white animate-pulse'
                 : 'bg-[#B69A65] text-white hover:bg-[#9B804E]'
@@ -402,7 +535,7 @@ export default function KitchenScene3D({ className = '', height = '600px' }) {
               </>
             ) : (
               <>
-                <Play className="w-3.5 h-3.5 fill-current" /> Start 3D Walkthrough
+                <Play className="w-3.5 h-3.5 fill-current" /> 3D Walkthrough
               </>
             )}
           </button>
@@ -434,6 +567,17 @@ export default function KitchenScene3D({ className = '', height = '600px' }) {
         </div>
       </div>
 
+      {/* Floating 3D Hover Tooltip / HUD Banner */}
+      {hoveredItemName && (
+        <div className="absolute top-20 left-1/2 -translate-x-1/2 pointer-events-none transition-all duration-200">
+          <div className="px-4 py-1.5 bg-black/75 backdrop-blur-md text-white rounded-full text-xs font-medium border border-white/20 shadow-xl flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+            <span>{hoveredItemName}</span>
+            <span className="text-[10px] text-[#D9C8AE] border-l border-white/20 pl-2">Click to interact</span>
+          </div>
+        </div>
+      )}
+
       {/* Bottom Floating Material & Lighting Quick Palette */}
       <div className="absolute bottom-4 left-4 right-4 flex flex-wrap items-center justify-between gap-3 pointer-events-none">
         {/* Real-time Cabinet Color Selector */}
@@ -442,7 +586,7 @@ export default function KitchenScene3D({ className = '', height = '600px' }) {
             <Palette className="w-3.5 h-3.5 text-[#52634A]" /> Shutter Color:
           </span>
           <div className="flex items-center gap-1.5">
-            {colorSwatches.map(swatch => (
+            {colorSwatches.map((swatch) => (
               <button
                 key={swatch.hex}
                 onClick={() => updateVisual('cabinetColor', swatch.hex)}
@@ -450,7 +594,7 @@ export default function KitchenScene3D({ className = '', height = '600px' }) {
                 style={{ backgroundColor: swatch.hex }}
                 className={`w-6 h-6 rounded-full border transition-all ${
                   visuals.cabinetColor === swatch.hex
-                    ? 'ring-2 ring-[#52634A] ring-offset-2 scale-110'
+                    ? 'ring-2 ring-[#52634A] ring-offset-2 scale-110 shadow'
                     : 'border-black/20 hover:scale-105'
                 }`}
               />
@@ -502,8 +646,8 @@ export default function KitchenScene3D({ className = '', height = '600px' }) {
 
       {/* Orbit Helper hint */}
       <div className="absolute bottom-4 left-1/2 -translate-x-1/2 pointer-events-none hidden md:block">
-        <span className="px-3 py-1 bg-black/50 text-white/80 backdrop-blur-sm rounded-full text-[11px]">
-          Click & drag to rotate 360° • Scroll to zoom
+        <span className="px-3.5 py-1 bg-black/60 text-white/90 backdrop-blur-sm rounded-full text-[11px] flex items-center gap-1.5 shadow">
+          <span>Click cabinets/drawers to open</span> • <span>Drag to orbit</span> • <span>Scroll to zoom</span>
         </span>
       </div>
     </div>

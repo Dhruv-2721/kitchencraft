@@ -1,6 +1,7 @@
 import React from 'react';
 import { Check, Info, ShieldCheck, Sparkles, Scale } from 'lucide-react';
 import { useProject } from '../../context/ProjectContext.jsx';
+import Card3DTilt from '../common/Card3DTilt.jsx';
 
 export default function MaterialCard({
   material,
@@ -25,11 +26,13 @@ export default function MaterialCard({
   };
 
   return (
-    <div
+    <Card3DTilt
+      maxTilt={6}
+      scale={1.015}
       className={`group relative bg-white rounded-3xl overflow-hidden border transition-all duration-300 flex flex-col ${
         isSelected
           ? 'border-[#52634A] ring-2 ring-[#52634A]/20 shadow-xl'
-          : 'border-[#D9C8AE]/50 hover:border-[#52634A]/60 card-shadow hover:-translate-y-1'
+          : 'border-[#D9C8AE]/50 hover:border-[#52634A]/60 card-shadow'
       }`}
     >
       {/* Product Image */}
@@ -138,6 +141,6 @@ export default function MaterialCard({
           </div>
         </div>
       </div>
-    </div>
+    </Card3DTilt>
   );
 }
